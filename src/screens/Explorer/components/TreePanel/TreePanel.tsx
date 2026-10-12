@@ -39,43 +39,47 @@ export const TreePanel: React.FC<TreePanelProps> = ({
   return (
     <aside className={`tree-panel tree-panel--${size}`}>
       <div className="tree-panel__list">
-        {projects.map((project) => {
-          const isExpanded = expandedProjects.includes(project.name);
-          const isProjectActive = activeProject === project.name && !activeFolder;
+        {projects.length === 0 ? (
+          <div className="tree-panel__empty">{UI_TERMS.treePanel.emptyState}</div>
+        ) : (
+          projects.map((project) => {
+            const isExpanded = expandedProjects.includes(project.name);
+            const isProjectActive = activeProject === project.name && !activeFolder;
 
-          return (
-            <div key={project.name} className="tree-panel__group">
-              <FileRow
-                name={project.name}
-                depth={0}
-                isFolder={true}
-                isExpanded={isExpanded}
-                isActive={isProjectActive}
-                onClick={() => {
-                  onToggleProjectExpand(project.name);
-                  onSelectFolder(project.name);
-                }}
-              />
+            return (
+              <div key={project.name} className="tree-panel__group">
+                <FileRow
+                  name={project.name}
+                  depth={0}
+                  isFolder={true}
+                  isExpanded={isExpanded}
+                  isActive={isProjectActive}
+                  onClick={() => {
+                    onToggleProjectExpand(project.name);
+                    onSelectFolder(project.name);
+                  }}
+                />
 
-              {isExpanded &&
-                project.children?.map((childFolder) => (
-                  <FileRow
-                    key={`${project.name}/${childFolder}`}
-                    name={childFolder}
-                    depth={1}
-                    isFolder={false}
-                    isActive={
-                      activeProject === project.name && activeFolder === childFolder
-                    }
-                    onClick={() => onSelectFolder(project.name, childFolder)}
-                  />
-                ))}
-            </div>
-          );
-        })}
+                {isExpanded &&
+                  project.children?.map((childFolder) => (
+                    <FileRow
+                      key={`${project.name}/${childFolder}`}
+                      name={childFolder}
+                      depth={1}
+                      isFolder={false}
+                      isActive={
+                        activeProject === project.name && activeFolder === childFolder
+                      }
+                      onClick={() => onSelectFolder(project.name, childFolder)}
+                    />
+                  ))}
+              </div>
+            );
+          })
+        )}
       </div>
 
-      {/* Pied du tree-panel : sélecteur de taille fixe Compact / Large (et indicateur dossiers) */}
+      {/* Pied du tree-panel : sélecteur de taille fixe Compact / Large */}
       <div className="tree-panel__footer">
         <button
           type="button"

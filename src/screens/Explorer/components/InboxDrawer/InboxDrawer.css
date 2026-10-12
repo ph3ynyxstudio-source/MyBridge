@@ -1,0 +1,228 @@
+/* Styles isolés de InboxDrawer (voir docs/components.md & docs/theme.md) */
+
+.inbox-drawer-backdrop {
+  position: fixed;
+  top: var(--topbar-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(3, 6, 17, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 50;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.inbox-drawer {
+  width: 520px;
+  max-width: 92vw;
+  height: 100%;
+  background-color: var(--bg-panel);
+  border-right: 2px solid var(--accent-blue);
+  box-shadow: 12px 0 32px rgba(3, 6, 17, 0.8);
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  gap: 16px;
+}
+
+.inbox-drawer__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.inbox-drawer__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inbox-drawer__title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inbox-drawer__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background-color: var(--accent-warning);
+  color: var(--text-inverse);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inbox-drawer__subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.inbox-drawer__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inbox-drawer__btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.inbox-drawer__btn--ghost {
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  background-color: var(--bg-card);
+}
+
+.inbox-drawer__btn--ghost:hover {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.inbox-drawer__btn--primary {
+  background-color: var(--accent-blue);
+  color: var(--text-inverse);
+  align-self: flex-end;
+  height: 32px;
+  padding: 0 16px;
+}
+
+.inbox-drawer__btn--primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.inbox-drawer__btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.inbox-drawer__error {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background-color: rgba(214, 69, 69, 0.16);
+  border: 1px solid var(--danger);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.inbox-drawer__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.inbox-drawer__empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 32px;
+}
+
+.inbox-drawer__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.inbox-drawer__item {
+  padding: 14px;
+  border-radius: var(--radius-md);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.inbox-drawer__item-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inbox-drawer__item-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background-color: var(--accent-blue-muted);
+  border: 1px solid var(--accent-blue-border);
+  color: var(--accent-blue);
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.inbox-drawer__item-name {
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-drawer__item-size {
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.inbox-drawer__no-project {
+  font-size: 12px;
+  color: var(--accent-warning);
+}
+
+.inbox-drawer__controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inbox-drawer__field {
+  flex: 1 1 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inbox-drawer__field-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.inbox-drawer__select {
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-topbar);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.inbox-drawer__select:focus {
+  border-color: var(--accent-blue);
+}

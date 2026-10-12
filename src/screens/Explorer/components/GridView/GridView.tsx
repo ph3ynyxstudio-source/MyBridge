@@ -7,24 +7,30 @@ export interface GridEntry {
   id: string;
   label: string;
   kind: TileKind;
+  isFolder: boolean;
 }
 
 export interface GridViewProps {
+  hasActiveProject: boolean;
+  currentPathLabel?: string;
   entries: GridEntry[];
   selectedEntryId: string;
-  onSelectEntry: (id: string) => void;
+  onSelectEntry: (entry: GridEntry) => void;
+  onOpenFolderEntry?: (entry: GridEntry) => void;
   onAddFolderOrFiles: () => void;
   subEntries?: GridEntry[];
   selectedSubEntryId?: string;
-  onSelectSubEntry?: (id: string) => void;
+  onSelectSubEntry?: (entry: GridEntry) => void;
   isPreviewDrawerOpen: boolean;
   onTogglePreviewDrawer: () => void;
 }
 
 export const GridView: React.FC<GridViewProps> = ({
+  hasActiveProject,
   entries,
   selectedEntryId,
   onSelectEntry,
+  onOpenFolderEntry,
   onAddFolderOrFiles,
   subEntries = [],
   selectedSubEntryId = "",
@@ -36,40 +42,75 @@ export const GridView: React.FC<GridViewProps> = ({
     <section className="grid-view">
       {/* Grille principale du projet courant sur fond texturé carbone */}
       <div className="grid-view__primary">
-        <div className="grid-view__tiles">
-          {entries.map((entry) => (
-            <FolderCard
-              key={entry.id}
-              label={entry.label}
-              kind={entry.kind}
-              selected={entry.id === selectedEntryId}
-              onClick={() => onSelectEntry(entry.id)}
-            />
-          ))}
+        {!hasActiveProject ? (
+          <div className="grid-view__empty-card">
+            <h3 className="grid-view__empty-title">
+              {UI_TERMS.gridView.noProjectsTitle}
+            </h3>
+            <p className="grid-view__empty-subtitle">
+              {UI_TERMS.gridView.noProjectsSubtitle}
+            </p>
+          </div>
+        ) : (
+          <>
+            {entries.length === 0 && (
+              <div className="grid-view__empty-banner">
+                <h3 className="grid-view__empty-title">
+                  {UI_TERMS.gridView.emptyProjectTitle}
+                </h3>
+                <p className="grid-view__empty-subtitle">
+                  {UI_TERMS.gridView.emptyProjectSubtitle}
+                </p>
+              </div>
+            )}
 
-          {/* Tuile "+ add folder/Files" intégrée directement à la grille */}
-          <FolderCard
-            label={UI_TERMS.gridView.addTileLabel}
-            kind="add"
-            onClick={onAddFolderOrFiles}
-          />
-        </div>
+            <div className="grid-view__tiles">
+              {entries.map((entry) => (
+                <FolderCard
+                  key={entry.id}
+                  label={entry.label}
+                  kind={entry.kind}
+                  selected={entry.id === selectedEntryId}
+                  onClick={() => onSelectEntry(entry)}
+                  onDoubleClick={() => {
+                    if (entry.isFolder && onOpenFolderEntry) {
+                      onOpenFolderEntry(entry);
+                    }
+                  }}
+                />
+              ))}
+
+              {/* Tuile "+ add folder/Files" intégrée directement à la grille */}
+              <FolderCard
+                label={UI_TERMS.gridView.addTileLabel}
+                kind="add"
+                onClick={onAddFolderOrFiles}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Volet secondaire / aperçu du dossier sélectionné (bordure cyan arrondie fidèle au mockup) */}
-      {isPreviewDrawerOpen && (
+      {hasActiveProject && isPreviewDrawerOpen && (
         <aside className="grid-view__secondary">
-          <div className="grid-view__secondary-tiles">
-            {subEntries.map((sub) => (
-              <FolderCard
-                key={sub.id}
-                label={sub.label}
-                kind={sub.kind}
-                selected={sub.id === selectedSubEntryId}
-                onClick={() => onSelectSubEntry && onSelectSubEntry(sub.id)}
-              />
-            ))}
-          </div>
+          {subEntries.length === 0 ? (
+            <div className="grid-view__secondary-empty">
+              {UI_TERMS.gridView.emptySecondary}
+            </div>
+          ) : (
+            <div className="grid-view__secondary-tiles">
+              {subEntries.map((sub) => (
+                <FolderCard
+                  key={sub.id}
+                  label={sub.label}
+                  kind={sub.kind}
+                  selected={sub.id === selectedSubEntryId}
+                  onClick={() => onSelectSubEntry && onSelectSubEntry(sub)}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Poignée latérale droite (pilule cyan avec flèche) */}
           <button

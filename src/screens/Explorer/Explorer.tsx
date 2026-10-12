@@ -1,79 +1,322 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { TileKind } from "../../components/FolderCard/FolderCard";
+import {
+  getInboxItems,
+  InboxItem,
+  listProjects,
+  moveInboxItem,
+  ProjectFolder,
+  readProjectContents,
+} from "../../services/storageService";
 import { APP_CONFIG, TreePanelSize } from "../../theme/config";
 import { Topbar } from "./components/Topbar/Topbar";
 import { TreePanel, ProjectTreeNode } from "./components/TreePanel/TreePanel";
 import { GridView, GridEntry } from "./components/GridView/GridView";
+import { InboxDrawer } from "./components/InboxDrawer/InboxDrawer";
 import { EcosystemSidebar } from "./components/EcosystemSidebar/EcosystemSidebar";
 import "./Explorer.css";
 
-/**
- * Données de maquette statiques (Étape 1 — aucun accès direct au disque).
- * Sera remplacé par les appels Tauri invoke() vers la couche Rust à l'Étape 2.
- */
-const MOCK_PINNED_PROJECTS = ["LunarMood", "Chr0nosVers", "Vesper"];
+const IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "svg",
+  "webp",
+  "gif",
+  "bmp",
+  "ico",
+]);
 
-const MOCK_PROJECT_TREE: ProjectTreeNode[] = [
-  {
-    name: "LunarMood",
-    children: ["01-Assets", "02-Docs", "03-Features", "04-Sessions", "05-Archives"],
-  },
-  {
-    name: "Chr0nosVers",
-    children: ["01-Assets", "02-Docs", "03-Features", "04-Sessions", "05-Archives"],
-  },
-  {
-    name: "Vesper",
-    children: ["01-Assets", "02-Docs", "03-Features"],
-  },
-  {
-    name: "Symbiose",
-    children: ["01-Assets", "02-Docs"],
-  },
-];
+function resolveTileKind(folder: ProjectFolder): TileKind {
+  if (folder.est_dossier) return "folder";
+  const dotIdx = folder.nom.lastIndexOf(".");
+  if (dotIdx > 0) {
+    const ext = folder.nom.slice(dotIdx + 1).toLowerCase();
+    if (IMAGE_EXTENSIONS.has(ext)) {
+      return "image";
+    }
+  }
+  return "file";
+}
 
-const MOCK_PRIMARY_ENTRIES: GridEntry[] = [
-  { id: "01-Assets", label: "01-Assets", kind: "folder" },
-  { id: "03-Features", label: "03-Features", kind: "folder" },
-  { id: "05-Archives", label: "05-Archives", kind: "folder" },
-  { id: "02-Docs", label: "02-Docs", kind: "folder" },
-  { id: "04-Sessions", label: "04-Sessions", kind: "folder" },
-];
-
-const MOCK_SUB_ENTRIES: Record<string, GridEntry[]> = {
-  "01-Assets": [
-    { id: "v1", label: "V1", kind: "folder" },
-    { id: "v2", label: "V2", kind: "folder" },
-    { id: "maquette-sombre", label: "Maquette Sombre", kind: "image" },
-    { id: "maquette-clair", label: "Maquette Clair", kind: "image" },
-  ],
-  "02-Docs": [
-    { id: "arch", label: "architecture.md", kind: "file" },
-    { id: "gov", label: "governance.md", kind: "file" },
-  ],
-};
+function toGridEntry(folder: ProjectFolder): GridEntry {
+  return {
+    id: folder.chemin_relatif || folder.nom,
+    label: folder.nom,
+    kind: resolveTileKind(folder),
+    isFolder: folder.est_dossier,
+  };
+}
 
 export const Explorer: React.FC = () => {
-  const [activeProject, setActiveProject] = useState<string>("LunarMood");
-  const [isTreeOpen, setIsTreeOpen] = useState<boolean>(APP_CONFIG.defaults.treePanelOpen);
-  const [treeSize, setTreeSize] = useState<TreePanelSize>(APP_CONFIG.defaults.treePanelSize);
-  const [expandedProjects, setExpandedProjects] = useState<string[]>(["Chr0nosVers"]);
-  const [selectedEntryId, setSelectedEntryId] = useState<string>("01-Assets");
+  const [projects, setProjects] = useState<string[]>([]);
+  const [projectSubfoldersMap, setProjectSubfoldersMap] = useState<
+    Record<string, string[]>
+  >({});
+  const [activeProject, setActiveProject] = useState<string>("");
+  const [currentSubpath, setCurrentSubpath] = useState<string | undefined>(undefined);
+
+  const [projectContents, setProjectContents] = useState<ProjectFolder[]>([]);
+  const [selectedEntryId, setSelectedEntryId] = useState<string>("");
+  const [secondaryFolders, setSecondaryFolders] = useState<ProjectFolder[]>([]);
   const [selectedSubEntryId, setSelectedSubEntryId] = useState<string>("");
+
+  const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
+  const [isInboxDrawerOpen, setIsInboxDrawerOpen] = useState<boolean>(false);
+
+  const [isTreeOpen, setIsTreeOpen] = useState<boolean>(
+    APP_CONFIG.defaults.treePanelOpen
+  );
+  const [treeSize, setTreeSize] = useState<TreePanelSize>(
+    APP_CONFIG.defaults.treePanelSize
+  );
+  const [expandedProjects, setExpandedProjects] = useState<string[]>([]);
   const [isPreviewDrawerOpen, setIsPreviewDrawerOpen] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [inboxCount] = useState<number>(APP_CONFIG.defaults.inboxPendingCount);
 
-  const filteredEntries = useMemo(() => {
+  /**
+   * Charge les éléments en attente dans la Boîte de dépôt (`inbox/`).
+   */
+  const refreshInbox = useCallback(async () => {
+    try {
+      const items = await getInboxItems();
+      setInboxItems(items);
+    } catch (err) {
+      console.error("Erreur lors du chargement de l'Inbox :", err);
+    }
+  }, []);
+
+  /**
+   * Charge le contenu d'un projet (et d'un sous-dossier éventuel) depuis Rust.
+   */
+  const loadProjectFolder = useCallback(
+    async (projectName: string, subpath?: string) => {
+      if (!projectName) {
+        setProjectContents([]);
+        setSecondaryFolders([]);
+        setSelectedEntryId("");
+        return;
+      }
+
+      try {
+        const contents = await readProjectContents(projectName, subpath);
+        setProjectContents(contents);
+
+        // Si on lit la racine du projet, on met aussi à jour les sous-dossiers pour l'arbre et l'Inbox
+        if (!subpath) {
+          const rootDirs = contents
+            .filter((item) => item.est_dossier)
+            .map((item) => item.nom);
+          setProjectSubfoldersMap((prev) => ({
+            ...prev,
+            [projectName]: rootDirs,
+          }));
+        }
+
+        // Sélection par défaut du premier élément pour alimenter le volet secondaire
+        if (contents.length > 0) {
+          const first = contents[0];
+          const firstId = first.chemin_relatif || first.nom;
+          setSelectedEntryId(firstId);
+          setSecondaryFolders(first.enfants_optionnels ?? []);
+        } else {
+          setSelectedEntryId("");
+          setSecondaryFolders([]);
+        }
+      } catch (err) {
+        console.error("Erreur lors de la lecture du projet :", err);
+        setProjectContents([]);
+        setSecondaryFolders([]);
+      }
+    },
+    []
+  );
+
+  /**
+   * Charge la liste des projets depuis `projects/` et précharge leurs sous-dossiers racines.
+   */
+  const refreshProjects = useCallback(
+    async (preferredProject?: string, preferredSubpath?: string) => {
+      try {
+        const list = await listProjects();
+        setProjects(list);
+
+        if (list.length === 0) {
+          setActiveProject("");
+          setProjectContents([]);
+          setSecondaryFolders([]);
+          return;
+        }
+
+        // Précharger les sous-dossiers de chaque projet pour le TreePanel et le sélecteur Inbox
+        const subMapEntries = await Promise.all(
+          list.map(async (proj) => {
+            try {
+              const rootItems = await readProjectContents(proj);
+              const subDirs = rootItems
+                .filter((i) => i.est_dossier)
+                .map((i) => i.nom);
+              return [proj, subDirs] as const;
+            } catch {
+              return [proj, [] as string[]] as const;
+            }
+          })
+        );
+        setProjectSubfoldersMap(Object.fromEntries(subMapEntries));
+
+        const targetProject =
+          preferredProject && list.includes(preferredProject)
+            ? preferredProject
+            : activeProject && list.includes(activeProject)
+            ? activeProject
+            : list[0];
+
+        setActiveProject(targetProject);
+        setExpandedProjects((prev) =>
+          prev.includes(targetProject) ? prev : [...prev, targetProject]
+        );
+
+        await loadProjectFolder(targetProject, preferredSubpath);
+      } catch (err) {
+        console.error("Erreur lors du chargement des projets :", err);
+      }
+    },
+    [activeProject, loadProjectFolder]
+  );
+
+  /**
+   * Initialisation au montage de l'écran Explorer.
+   */
+  useEffect(() => {
+    void refreshInbox();
+    void refreshProjects();
+  }, [refreshInbox, refreshProjects]);
+
+  /**
+   * Construction des noeuds de l'arbre latéral gauche (`TreePanel`).
+   */
+  const treeNodes: ProjectTreeNode[] = useMemo(() => {
+    return projects.map((projName) => ({
+      name: projName,
+      children: projectSubfoldersMap[projName] ?? [],
+    }));
+  }, [projects, projectSubfoldersMap]);
+
+  /**
+   * Entrées de la grille principale filtrées par la recherche.
+   */
+  const primaryGridEntries: GridEntry[] = useMemo(() => {
+    const all = projectContents.map(toGridEntry);
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return MOCK_PRIMARY_ENTRIES;
-    return MOCK_PRIMARY_ENTRIES.filter((entry) =>
-      entry.label.toLowerCase().includes(query)
-    );
-  }, [searchQuery]);
+    if (!query) return all;
+    return all.filter((entry) => entry.label.toLowerCase().includes(query));
+  }, [projectContents, searchQuery]);
 
-  const currentSubEntries = useMemo(() => {
-    return MOCK_SUB_ENTRIES[selectedEntryId] ?? [];
-  }, [selectedEntryId]);
+  /**
+   * Entrées du volet d'aperçu secondaire.
+   */
+  const secondaryGridEntries: GridEntry[] = useMemo(() => {
+    return secondaryFolders.map(toGridEntry);
+  }, [secondaryFolders]);
+
+  /**
+   * Sélection d'un projet depuis la Topbar.
+   */
+  const handleSelectProject = (projectName: string) => {
+    setActiveProject(projectName);
+    setCurrentSubpath(undefined);
+    setExpandedProjects((prev) =>
+      prev.includes(projectName) ? prev : [...prev, projectName]
+    );
+    void loadProjectFolder(projectName, undefined);
+  };
+
+  /**
+   * Sélection d'un projet ou d'un sous-dossier depuis le `TreePanel`.
+   */
+  const handleSelectFolderFromTree = (
+    projectName: string,
+    folderName?: string
+  ) => {
+    setActiveProject(projectName);
+    if (!folderName) {
+      setCurrentSubpath(undefined);
+      void loadProjectFolder(projectName, undefined);
+    } else {
+      // On charge la racine du projet et on sélectionne directement ce sous-dossier pour afficher son aperçu
+      setCurrentSubpath(undefined);
+      void readProjectContents(projectName, undefined).then(async (contents) => {
+        setProjectContents(contents);
+        const match = contents.find((item) => item.nom === folderName);
+        if (match) {
+          const matchId = match.chemin_relatif || match.nom;
+          setSelectedEntryId(matchId);
+          setIsPreviewDrawerOpen(true);
+          if (match.enfants_optionnels) {
+            setSecondaryFolders(match.enfants_optionnels);
+          } else if (match.est_dossier) {
+            const sub = await readProjectContents(projectName, folderName);
+            setSecondaryFolders(sub);
+          } else {
+            setSecondaryFolders([]);
+          }
+        }
+      });
+    }
+  };
+
+  /**
+   * Clic simple sur une tuile de la grille principale : met en surbrillance et peuple le volet secondaire.
+   */
+  const handleSelectGridEntry = async (entry: GridEntry) => {
+    setSelectedEntryId(entry.id);
+    setSelectedSubEntryId("");
+
+    const folderObj = projectContents.find(
+      (f) => (f.chemin_relatif || f.nom) === entry.id
+    );
+    if (!folderObj || !folderObj.est_dossier) {
+      setSecondaryFolders([]);
+      return;
+    }
+
+    setIsPreviewDrawerOpen(true);
+    if (folderObj.enfants_optionnels) {
+      setSecondaryFolders(folderObj.enfants_optionnels);
+    } else if (activeProject) {
+      try {
+        const sub = await readProjectContents(
+          activeProject,
+          folderObj.chemin_relatif
+        );
+        setSecondaryFolders(sub);
+      } catch {
+        setSecondaryFolders([]);
+      }
+    }
+  };
+
+  /**
+   * Double-clic sur un dossier de la grille : entre dans ce sous-dossier.
+   */
+  const handleOpenFolderEntry = (entry: GridEntry) => {
+    if (!activeProject || !entry.isFolder) return;
+    setCurrentSubpath(entry.id);
+    void loadProjectFolder(activeProject, entry.id);
+  };
+
+  /**
+   * Déplacement validé d'un élément de la Boîte de dépôt (`inbox/`) vers un projet cible.
+   */
+  const handleMoveInboxItem = async (
+    itemName: string,
+    targetProject: string,
+    targetSubpath?: string
+  ) => {
+    await moveInboxItem(itemName, targetProject, targetSubpath);
+    await refreshInbox();
+    await refreshProjects(targetProject, currentSubpath);
+  };
 
   const handleToggleProjectExpand = (projectName: string) => {
     setExpandedProjects((prev) =>
@@ -83,36 +326,35 @@ export const Explorer: React.FC = () => {
     );
   };
 
-  const handleSelectFolderFromTree = (projectName: string, folderName?: string) => {
-    setActiveProject(projectName);
-    if (folderName) {
-      setSelectedEntryId(folderName);
-      setIsPreviewDrawerOpen(true);
-    }
-  };
-
   const handleToggleTreeSize = () => {
     setTreeSize((prev) => (prev === "compact" ? "large" : "compact"));
+  };
+
+  const handleRefreshAll = () => {
+    void refreshInbox();
+    void refreshProjects(activeProject, currentSubpath);
+  };
+
+  const handleGoHome = () => {
+    if (!activeProject) return;
+    setCurrentSubpath(undefined);
+    void loadProjectFolder(activeProject, undefined);
   };
 
   return (
     <div className="explorer-screen">
       <Topbar
-        pinnedProjects={MOCK_PINNED_PROJECTS}
+        pinnedProjects={projects}
         activeProject={activeProject}
-        onSelectProject={setActiveProject}
+        onSelectProject={handleSelectProject}
         isTreeOpen={isTreeOpen}
         onToggleTree={() => setIsTreeOpen((prev) => !prev)}
-        inboxCount={inboxCount}
-        onOpenInbox={() => {
-          /* Sera branché sur l'Inbox Rust à l'Étape 2 */
-        }}
+        inboxCount={inboxItems.length}
+        onOpenInbox={() => setIsInboxDrawerOpen((prev) => !prev)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        onGoHome={() => setSelectedEntryId("01-Assets")}
-        onRefresh={() => {
-          /* Sera branché sur Rust à l'Étape 2 */
-        }}
+        onGoHome={handleGoHome}
+        onRefresh={handleRefreshAll}
       />
 
       <main className="explorer-screen__body">
@@ -120,7 +362,7 @@ export const Explorer: React.FC = () => {
           isOpen={isTreeOpen}
           size={treeSize}
           onToggleSize={handleToggleTreeSize}
-          projects={MOCK_PROJECT_TREE}
+          projects={treeNodes}
           expandedProjects={expandedProjects}
           onToggleProjectExpand={handleToggleProjectExpand}
           activeProject={activeProject}
@@ -129,24 +371,33 @@ export const Explorer: React.FC = () => {
         />
 
         <GridView
-          entries={filteredEntries}
+          hasActiveProject={Boolean(activeProject)}
+          currentPathLabel={currentSubpath}
+          entries={primaryGridEntries}
           selectedEntryId={selectedEntryId}
-          onSelectEntry={(id) => {
-            setSelectedEntryId(id);
-            setIsPreviewDrawerOpen(true);
-          }}
-          onAddFolderOrFiles={() => {
-            /* Sera branché sur l'ingestion Rust à l'Étape 2 */
-          }}
-          subEntries={currentSubEntries}
+          onSelectEntry={handleSelectGridEntry}
+          onOpenFolderEntry={handleOpenFolderEntry}
+          onAddFolderOrFiles={() => setIsInboxDrawerOpen(true)}
+          subEntries={secondaryGridEntries}
           selectedSubEntryId={selectedSubEntryId}
-          onSelectSubEntry={setSelectedSubEntryId}
+          onSelectSubEntry={(sub) => setSelectedSubEntryId(sub.id)}
           isPreviewDrawerOpen={isPreviewDrawerOpen}
           onTogglePreviewDrawer={() => setIsPreviewDrawerOpen((prev) => !prev)}
         />
 
         <EcosystemSidebar />
       </main>
+
+      <InboxDrawer
+        isOpen={isInboxDrawerOpen}
+        items={inboxItems}
+        projects={projects}
+        defaultTargetProject={activeProject}
+        availableSubfolders={projectSubfoldersMap}
+        onClose={() => setIsInboxDrawerOpen(false)}
+        onRefreshInbox={refreshInbox}
+        onMoveItem={handleMoveInboxItem}
+      />
     </div>
   );
 };
