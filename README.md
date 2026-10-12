@@ -1,6 +1,6 @@
 # MyBr|dge
 
-Explorateur de fichiers local pour les projets PH3YNYX.OS — Tauri v2 (Rust) + React. Affiche et navigue le dossier de projets (C:\Ph3yNyx.OS\05-Projets), sans IA intégrée.
+Gestionnaire de stockage local autonome pour les projets PH3YNYX.OS — Tauri v2 (Rust) + React. Ingère, organise et navigue les projets dans son propre espace de données local, sans IA intégrée.
 
 ## Setup
 - Package manager : pnpm (pas npm)
