@@ -1,14 +1,25 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+pub mod storage;
+
+use storage::{
+    get_inbox_items, init_storage_dirs, list_projects, move_inbox_item, read_project_contents,
+};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .setup(|app| {
+            init_storage_dirs(app.handle()).map_err(|err| {
+                std::io::Error::new(std::io::ErrorKind::Other, err)
+            })?;
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            get_inbox_items,
+            move_inbox_item,
+            list_projects,
+            read_project_contents
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

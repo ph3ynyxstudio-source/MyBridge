@@ -1,0 +1,77 @@
+/* Styles isolés de TreePanel (voir docs/layout.md : pousse le contenu, 2 tailles fixes) */
+
+.tree-panel {
+  height: 100%;
+  background-color: var(--bg-panel);
+  border-right: 1.5px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex-shrink: 0;
+  transition: width 0.18s ease;
+  padding: 20px 8px 14px;
+}
+
+.tree-panel--compact {
+  width: var(--tree-width-compact);
+}
+
+.tree-panel--large {
+  width: var(--tree-width-large);
+}
+
+.tree-panel__list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tree-panel__group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tree-panel__footer {
+  padding-top: 12px;
+  padding-left: 6px;
+  display: flex;
+  align-items: center;
+}
+
+.tree-panel__mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--radius-md);
+  background-color: var(--bg-topbar);
+  border: 1px solid var(--border-subtle);
+}
+
+.tree-panel__mode-pill {
+  width: 26px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--bg-input);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.tree-panel__mode-pill svg {
+  width: 15px;
+  height: 15px;
+}
+
+.tree-panel__mode-pill--purple {
+  color: var(--accent-purple);
+}
+
+.tree-panel__mode-pill--active {
+  background-color: rgba(84, 214, 255, 0.25);
+  color: var(--text-primary);
+}

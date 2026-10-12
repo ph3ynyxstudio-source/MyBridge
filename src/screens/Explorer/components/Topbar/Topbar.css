@@ -1,0 +1,279 @@
+/* Styles isolés de Topbar (voir docs/layout.md & docs/theme.md) */
+
+.topbar {
+  position: relative;
+  height: var(--topbar-height);
+  min-height: var(--topbar-height);
+  width: 100%;
+  background-color: var(--bg-topbar);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  gap: 16px;
+  z-index: 10;
+}
+
+/* Liseré dégradé inférieur violet -> cyan fidèle au mockup */
+.topbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--accent-purple) 0%,
+    var(--accent-blue) 55%,
+    var(--accent-purple) 100%
+  );
+}
+
+.topbar__zone {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.topbar__zone--left {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 8px;
+}
+
+.topbar__zone--center {
+  flex: 0 0 auto;
+  gap: 16px;
+}
+
+.topbar__zone--right {
+  flex: 0 0 auto;
+  gap: 12px;
+}
+
+.topbar__icon-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.topbar__icon-btn svg {
+  width: 19px;
+  height: 19px;
+}
+
+.topbar__icon-btn:hover {
+  background-color: rgba(84, 214, 255, 0.12);
+  color: var(--accent-blue);
+}
+
+.topbar__icon-btn--active {
+  color: var(--accent-blue);
+  background-color: rgba(84, 214, 255, 0.14);
+}
+
+.topbar__icon-btn--accent {
+  color: var(--accent-blue);
+}
+
+/* Bouton Boîte de dépôt (Inbox) + Badge jaune d'alerte */
+.topbar__inbox-btn {
+  position: relative;
+  width: 34px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--accent-blue);
+  background-color: rgba(84, 214, 255, 0.1);
+  border: 1px solid rgba(84, 214, 255, 0.25);
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+.topbar__inbox-btn:hover {
+  background-color: rgba(84, 214, 255, 0.2);
+  border-color: var(--accent-blue);
+  transform: translateY(-1px);
+}
+
+.topbar__inbox-svg {
+  width: 19px;
+  height: 19px;
+}
+
+.topbar__inbox-badge {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background-color: var(--accent-warning);
+  color: var(--text-inverse);
+  font-size: 10px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.65);
+}
+
+.topbar__divider {
+  width: 1.5px;
+  height: 22px;
+  background-color: var(--text-primary);
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+
+/* Onglets de projets (scroll horizontal sans retour à la ligne) */
+.topbar__tabs {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  gap: 4px;
+}
+
+.topbar__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.topbar__tab {
+  height: calc(var(--topbar-height) - 8px);
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--text-primary);
+  white-space: nowrap;
+  border-radius: 4px 4px 0 0;
+  border-bottom: 3px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.topbar__tab:hover {
+  background-color: rgba(84, 214, 255, 0.12);
+}
+
+.topbar__tab--active {
+  background-color: rgba(84, 214, 255, 0.28);
+  border-bottom-color: var(--accent-blue);
+}
+
+/* Identité centrale MyBr|dge */
+.topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  transition: color 0.15s ease;
+}
+
+.topbar__brand:hover {
+  color: var(--accent-blue);
+}
+
+.topbar__brand-icon {
+  width: 17px;
+  height: 17px;
+  color: var(--accent-blue);
+}
+
+.topbar__brand-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+}
+
+/* Pilule Split-View (V2+) */
+.topbar__split-pill {
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1.5px solid var(--accent-blue);
+  background-color: rgba(84, 214, 255, 0.16);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 2px 5px;
+}
+
+.topbar__split-pane {
+  width: 8px;
+  height: 13px;
+  border-radius: 2px;
+  background-color: var(--bg-input);
+}
+
+.topbar__split-pane--right {
+  background-color: var(--accent-blue);
+}
+
+/* Navigation & Recherche */
+.topbar__nav-arrows {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.topbar__search-wrapper {
+  width: 220px;
+}
+
+.topbar__search-input {
+  width: 100%;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background-color: var(--bg-input);
+  color: var(--text-inverse);
+  font-size: 12px;
+}
+
+.topbar__search-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.topbar__search-input:focus {
+  border-color: var(--accent-blue);
+}
+
+/* Pilule Thème Sombre / Aube */
+.topbar__theme-pill {
+  width: 46px;
+  height: 23px;
+  border-radius: 999px;
+  border: 1.5px solid var(--accent-blue);
+  background-color: rgba(84, 214, 255, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 5px;
+}
+
+.topbar__theme-moon {
+  font-size: 12px;
+  color: var(--bg-input);
+  line-height: 1;
+}
+
+.topbar__theme-sun {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background-color: var(--accent-warning);
+  box-shadow: 0 0 6px var(--accent-warning);
+}

@@ -1,0 +1,79 @@
+/* Styles isolés de FolderCard (voir docs/components.md & docs/theme.md) */
+
+.folder-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  width: 118px;
+  padding: 12px 10px;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid transparent;
+  background-color: transparent;
+  transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.12s ease;
+  text-align: center;
+  gap: 8px;
+}
+
+.folder-card:hover {
+  background-color: rgba(84, 214, 255, 0.08);
+  border-color: var(--border-subtle);
+  transform: translateY(-1px);
+}
+
+.folder-card--selected {
+  background-color: var(--accent-blue-muted);
+  border-color: var(--accent-blue-border);
+  box-shadow: 0 0 18px rgba(84, 214, 255, 0.16);
+}
+
+.folder-card--selected:hover {
+  background-color: var(--accent-blue-muted);
+  border-color: var(--accent-blue);
+}
+
+.folder-card__icon-wrapper {
+  width: 78px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.folder-card__svg {
+  width: 100%;
+  height: 100%;
+}
+
+.folder-card__svg--folder {
+  color: var(--bg-input);
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.35));
+}
+
+.folder-card__svg--add {
+  color: var(--accent-blue);
+  opacity: 0.85;
+  filter: drop-shadow(0 4px 12px rgba(84, 214, 255, 0.25));
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.folder-card--add:hover .folder-card__svg--add {
+  opacity: 1;
+  transform: scale(1.04);
+}
+
+.folder-card__svg--image,
+.folder-card__svg--file {
+  width: 66px;
+  height: 62px;
+  color: var(--bg-input);
+}
+
+.folder-card__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--text-primary);
+  line-height: 1.35;
+  word-break: break-word;
+}

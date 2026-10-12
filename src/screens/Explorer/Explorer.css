@@ -1,0 +1,20 @@
+/* Layout principal de l'écran Explorer (voir docs/layout.md & docs/components.md) */
+
+.explorer-screen {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--bg-carbon);
+  background-image: var(--carbon-pattern);
+}
+
+.explorer-screen__body {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}

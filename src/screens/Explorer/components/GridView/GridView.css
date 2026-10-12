@@ -1,0 +1,77 @@
+/* Styles isolés de GridView (voir docs/layout.md & docs/theme.md) */
+
+.grid-view {
+  flex: 1 1 auto;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  position: relative;
+}
+
+.grid-view__primary {
+  flex: 1 1 auto;
+  padding: 44px 48px;
+  overflow-y: auto;
+}
+
+.grid-view__tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 32px 28px;
+  max-width: 520px;
+  justify-items: center;
+}
+
+/* Panneau secondaire encadré d'une bordure cyan arrondie à gauche (fidèle à mockup_Clean.png) */
+.grid-view__secondary {
+  position: relative;
+  width: 44%;
+  min-width: 340px;
+  max-width: 540px;
+  height: 100%;
+  background-color: var(--bg-panel);
+  border-left: 2px solid var(--accent-blue);
+  border-top: 2px solid var(--accent-blue);
+  border-bottom: 2px solid var(--accent-blue);
+  border-top-left-radius: 36px;
+  border-bottom-left-radius: 36px;
+  padding: 44px 40px;
+  overflow-y: auto;
+  box-shadow: -8px 0 28px rgba(3, 6, 17, 0.55);
+}
+
+.grid-view__secondary-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(105px, 1fr));
+  gap: 28px 20px;
+  justify-items: center;
+}
+
+/* Poignée pilule cyan sur le bord droit du volet secondaire */
+.grid-view__drawer-handle {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 52px;
+  border-radius: 10px 0 0 10px;
+  background-color: var(--accent-blue);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 12px rgba(84, 214, 255, 0.45);
+  transition: width 0.14s ease, filter 0.14s ease;
+}
+
+.grid-view__drawer-handle:hover {
+  width: 20px;
+  filter: brightness(1.1);
+}
+
+.grid-view__drawer-handle svg {
+  width: 11px;
+  height: 11px;
+}

@@ -1,0 +1,54 @@
+/* Styles isolés de FileRow (voir docs/components.md & docs/theme.md) */
+
+.file-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  padding-right: 12px;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.file-row:hover {
+  background-color: rgba(84, 214, 255, 0.08);
+}
+
+.file-row--root {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  margin-top: 4px;
+}
+
+.file-row--child {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  color: var(--bg-input);
+}
+
+.file-row--active {
+  color: var(--accent-blue);
+  background-color: rgba(84, 214, 255, 0.12);
+}
+
+.file-row__chevron {
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  width: 10px;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.file-row__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
