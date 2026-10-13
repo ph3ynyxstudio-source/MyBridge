@@ -1,0 +1,61 @@
+/* Styles isolés de NewProjectInput (voir docs/theme.md & docs/components.md) */
+
+.new-project-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.new-project-input__form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.new-project-input__field {
+  flex: 1 1 auto;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-topbar);
+  color: var(--text-primary);
+  font-size: 12px;
+  transition: border-color 0.14s ease;
+}
+
+.new-project-input__field:focus {
+  border-color: var(--accent-blue);
+}
+
+.new-project-input__btn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  background-color: var(--accent-blue);
+  color: var(--text-inverse);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  transition: filter 0.14s ease, opacity 0.14s ease;
+  flex-shrink: 0;
+}
+
+.new-project-input__btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.new-project-input__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.new-project-input__error {
+  font-size: 11px;
+  color: var(--danger);
+  line-height: 1.3;
+}

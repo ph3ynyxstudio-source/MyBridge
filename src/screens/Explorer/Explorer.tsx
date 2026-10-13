@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { TileKind } from "../../components/FolderCard/FolderCard";
 import {
+  createProject,
   getInboxItems,
   InboxItem,
   listProjects,
@@ -13,6 +14,10 @@ import { Topbar } from "./components/Topbar/Topbar";
 import { TreePanel, ProjectTreeNode } from "./components/TreePanel/TreePanel";
 import { GridView, GridEntry } from "./components/GridView/GridView";
 import { InboxDrawer } from "./components/InboxDrawer/InboxDrawer";
+import {
+  ShortcutsPanel,
+  MAX_SHORTCUTS,
+} from "./components/ShortcutsPanel/ShortcutsPanel";
 import { EcosystemSidebar } from "./components/EcosystemSidebar/EcosystemSidebar";
 import "./Explorer.css";
 
@@ -48,8 +53,26 @@ function toGridEntry(folder: ProjectFolder): GridEntry {
   };
 }
 
+const PINNED_STORAGE_KEY = "mybridge_pinned_projects";
+
 export const Explorer: React.FC = () => {
   const [projects, setProjects] = useState<string[]>([]);
+  const [pinnedProjects, setPinnedProjects] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(PINNED_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.slice(0, MAX_SHORTCUTS);
+        }
+      }
+    } catch {
+      // fallback
+    }
+    return [];
+  });
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
+
   const [projectSubfoldersMap, setProjectSubfoldersMap] = useState<
     Record<string, string[]>
   >({});
@@ -140,6 +163,28 @@ export const Explorer: React.FC = () => {
       try {
         const list = await listProjects();
         setProjects(list);
+
+        // Synchronisation des favoris épinglés avec les projets existants
+        setPinnedProjects((prev) => {
+          const valid = prev.filter((p) => list.includes(p));
+          if (valid.length === 0 && list.length > 0) {
+            const initial = list.slice(0, MAX_SHORTCUTS);
+            try {
+              localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(initial));
+            } catch {
+              // ignore
+            }
+            return initial;
+          }
+          if (valid.length !== prev.length) {
+            try {
+              localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(valid));
+            } catch {
+              // ignore
+            }
+          }
+          return valid;
+        });
 
         if (list.length === 0) {
           setActiveProject("");
@@ -341,20 +386,73 @@ export const Explorer: React.FC = () => {
     void loadProjectFolder(activeProject, undefined);
   };
 
+  /**
+   * Création d'un nouveau projet via Rust.
+   */
+  const handleCreateProject = async (newProjectName: string) => {
+    const created = await createProject(newProjectName);
+    await refreshProjects(created, undefined);
+
+    setPinnedProjects((prev) => {
+      if (prev.length < MAX_SHORTCUTS && !prev.includes(created)) {
+        const next = [...prev, created];
+        try {
+          localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      }
+      return prev;
+    });
+  };
+
+  /**
+   * Bascule d'épinglage d'un projet dans les favoris Topbar (1 à 4 max).
+   */
+  const handleTogglePinProject = (projectName: string) => {
+    setPinnedProjects((prev) => {
+      let next: string[];
+      if (prev.includes(projectName)) {
+        next = prev.filter((p) => p !== projectName);
+      } else {
+        if (prev.length >= MAX_SHORTCUTS) return prev;
+        next = [...prev, projectName];
+      }
+      try {
+        localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="explorer-screen">
       <Topbar
-        pinnedProjects={projects}
+        pinnedProjects={pinnedProjects}
         activeProject={activeProject}
         onSelectProject={handleSelectProject}
         isTreeOpen={isTreeOpen}
         onToggleTree={() => setIsTreeOpen((prev) => !prev)}
         inboxCount={inboxItems.length}
         onOpenInbox={() => setIsInboxDrawerOpen((prev) => !prev)}
+        onOpenProjectManager={() => setIsShortcutsOpen((prev) => !prev)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onGoHome={handleGoHome}
         onRefresh={handleRefreshAll}
+      />
+
+      {/* Panneau contextuel de raccourcis ancré sous le bouton (+) */}
+      <ShortcutsPanel
+        isOpen={isShortcutsOpen}
+        projects={projects}
+        pinnedProjects={pinnedProjects}
+        onTogglePinProject={handleTogglePinProject}
+        onCreateProject={handleCreateProject}
+        onClose={() => setIsShortcutsOpen(false)}
       />
 
       <main className="explorer-screen__body">

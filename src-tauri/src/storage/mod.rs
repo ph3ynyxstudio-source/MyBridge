@@ -359,3 +359,28 @@ pub fn read_project_contents(
 
     read_directory_entries(&target_dir, &project_root, true)
 }
+
+/// Crée un nouveau dossier de projet dans le coffre `projects/{project_name}`.
+/// Renvoie une erreur si le nom est invalide ou si le projet existe déjà.
+#[tauri::command]
+pub fn create_project(app: AppHandle, project_name: String) -> Result<String, String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+    let valid_name = validate_single_name(&project_name, "project_name")?;
+
+    let project_dir = projects_dir.join(&valid_name);
+    if project_dir.exists() {
+        return Err(format!(
+            "Le projet '{}' existe déjà dans le coffre.",
+            valid_name
+        ));
+    }
+
+    fs::create_dir_all(&project_dir).map_err(|e| {
+        format!(
+            "Impossible de créer le dossier pour le projet '{}' : {}",
+            valid_name, e
+        )
+    })?;
+
+    Ok(valid_name)
+}

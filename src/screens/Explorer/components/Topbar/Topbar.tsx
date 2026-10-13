@@ -10,6 +10,7 @@ export interface TopbarProps {
   onToggleTree: () => void;
   inboxCount: number;
   onOpenInbox: () => void;
+  onOpenProjectManager: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onGoHome: () => void;
@@ -24,6 +25,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   onToggleTree,
   inboxCount,
   onOpenInbox,
+  onOpenProjectManager,
   searchQuery,
   onSearchChange,
   onGoHome,
@@ -79,10 +81,11 @@ export const Topbar: React.FC<TopbarProps> = ({
           )}
         </button>
 
-        {/* Bouton (+) pour épingler un raccourci projet */}
+        {/* Bouton (+) pour ouvrir la gestion des projets */}
         <button
           type="button"
           className="topbar__icon-btn topbar__add-shortcut"
+          onClick={onOpenProjectManager}
           title={UI_TERMS.topbar.addShortcut}
           aria-label={UI_TERMS.topbar.addShortcut}
         >
@@ -138,20 +141,9 @@ export const Topbar: React.FC<TopbarProps> = ({
           </svg>
           <span className="topbar__brand-title">{UI_TERMS.appTitle}</span>
         </button>
-
-        {/* Toggle visuel Split-View (V2+ verrouillé en placeholder fidèle au mockup) */}
-        <button
-          type="button"
-          className="topbar__split-pill"
-          title="Split-View (V2+)"
-          aria-label="Split-View (V2+)"
-        >
-          <span className="topbar__split-pane topbar__split-pane--left" />
-          <span className="topbar__split-pane topbar__split-pane--right" />
-        </button>
       </div>
 
-      {/* ZONE DROITE : Navigation Arrière/Avant, Recherche, Actualiser, Réglages, Thème */}
+      {/* ZONE DROITE : Navigation Arrière/Avant, Recherche, Actualiser, Réglages */}
       <div className="topbar__zone topbar__zone--right">
         <div className="topbar__nav-arrows">
           <button
@@ -214,17 +206,6 @@ export const Topbar: React.FC<TopbarProps> = ({
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
-        </button>
-
-        {/* Sélecteur de thème Sombre/Aube (V2+ placeholder fidèle au mockup) */}
-        <button
-          type="button"
-          className="topbar__theme-pill"
-          title={UI_TERMS.topbar.themeToggle}
-          aria-label={UI_TERMS.topbar.themeToggle}
-        >
-          <span className="topbar__theme-moon">☾</span>
-          <span className="topbar__theme-sun" />
         </button>
       </div>
     </header>

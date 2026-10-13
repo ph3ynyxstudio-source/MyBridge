@@ -50,6 +50,20 @@ export const UI_TERMS = {
     movingButton: "Déplacement...",
     noProjectWarning: "Aucun projet disponible dans projects/ pour recevoir cet élément.",
   },
+  shortcutsPanel: {
+    title: "Raccourcis",
+    maxNotice: "maximum de 4",
+    legendStar: "Priorité double clic",
+    legendCheck: "Activé",
+    empty: "Aucun projet disponible dans projects/.",
+    limitReached: "Limite de 4 raccourcis atteinte.",
+  },
+  newProjectInput: {
+    placeholder: "Nom du nouveau projet...",
+    buttonCreate: "Créer",
+    buttonCreating: "Création...",
+    emptyError: "Veuillez saisir un nom de projet.",
+  },
   ecosystem: {
     sectionLabel: "Raccourcis Écosystème PH3YNYX.OS",
     vesper: "VespΣr",

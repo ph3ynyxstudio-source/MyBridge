@@ -71,3 +71,11 @@ export async function readProjectContents(
     subpath: cleanSubpath,
   });
 }
+
+/**
+ * Crée un nouveau projet sous projects/{projectName}.
+ */
+export async function createProject(projectName: string): Promise<string> {
+  const cleanName = projectName.trim();
+  return invoke<string>("create_project", { projectName: cleanName });
+}

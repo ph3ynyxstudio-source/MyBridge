@@ -1,0 +1,171 @@
+/* Styles isolés de ShortcutsPanel (voir docs/theme.md et docs/layout.md) */
+
+.shortcuts-panel {
+  position: absolute;
+  top: calc(var(--topbar-height) + 4px);
+  left: 56px;
+  width: 290px;
+  background-color: var(--bg-panel);
+  border: 1.5px solid var(--accent-blue-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px rgba(3, 6, 17, 0.85), 0 0 18px rgba(84, 214, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 14px 12px;
+  gap: 10px;
+  z-index: 40;
+  animation: shortcutsFadeIn 0.14s ease-out;
+}
+
+@keyframes shortcutsFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.shortcuts-panel__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.shortcuts-panel__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcuts-panel__title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.shortcuts-panel__count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-blue);
+  background-color: var(--accent-blue-muted);
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.shortcuts-panel__notice {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.shortcuts-panel__legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  padding-bottom: 4px;
+}
+
+.shortcuts-panel__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shortcuts-panel__star-icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.shortcuts-panel__star-icon--active {
+  filter: drop-shadow(0 0 4px rgba(250, 204, 21, 0.5));
+}
+
+.shortcuts-panel__check-symbol {
+  font-weight: 800;
+  color: var(--accent-blue);
+}
+
+.shortcuts-panel__list-container {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.shortcuts-panel__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shortcuts-panel__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card);
+  border: 1px solid transparent;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.shortcuts-panel__item:hover:not(.shortcuts-panel__item--disabled) {
+  background-color: rgba(84, 214, 255, 0.08);
+  border-color: var(--border-subtle);
+}
+
+.shortcuts-panel__item--active {
+  background-color: var(--accent-blue-muted);
+  border-color: var(--accent-blue-border);
+}
+
+.shortcuts-panel__item--disabled {
+  opacity: 0.45;
+}
+
+.shortcuts-panel__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.shortcuts-panel__checkbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent-blue);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.shortcuts-panel__name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shortcuts-panel__empty {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding: 8px 0;
+}
+
+.shortcuts-panel__footer {
+  width: 100%;
+}

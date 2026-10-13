@@ -1,7 +1,8 @@
 pub mod storage;
 
 use storage::{
-    get_inbox_items, init_storage_dirs, list_projects, move_inbox_item, read_project_contents,
+    create_project, get_inbox_items, init_storage_dirs, list_projects, move_inbox_item,
+    read_project_contents,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -15,6 +16,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            create_project,
             get_inbox_items,
             move_inbox_item,
             list_projects,
