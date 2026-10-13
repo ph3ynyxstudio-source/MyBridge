@@ -4,10 +4,10 @@ use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use tauri::{AppHandle, Manager};
 
-const INBOX_DIR_NAME: &str = "inbox";
+const INBOX_DIR_PATH: &str = r"C:\Ph3yNyx.OS\00-Dropbox";
 const PROJECTS_DIR_NAME: &str = "projects";
 
-/// Élément présent dans la Boîte de dépôt (`inbox/`).
+/// Élément présent dans la Boîte de dépôt (`C:\Ph3yNyx.OS\00-Dropbox`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InboxItem {
     pub nom: String,
@@ -27,18 +27,23 @@ pub struct ProjectFolder {
     pub enfants_optionnels: Option<Vec<ProjectFolder>>,
 }
 
-/// Résout et garantit l'existence des répertoires autonomes `inbox/` et `projects/` sous `app_data_dir`.
+/// Résout et garantit l'existence de la Boîte de dépôt (`C:\Ph3yNyx.OS\00-Dropbox`)
+/// et du coffre des projets sous `app_data_dir/projects/`.
 pub fn init_storage_dirs(app: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
     let base_dir = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("Impossible de résoudre app_data_dir : {}", e))?;
 
-    let inbox_dir = base_dir.join(INBOX_DIR_NAME);
+    let inbox_dir = PathBuf::from(INBOX_DIR_PATH);
     let projects_dir = base_dir.join(PROJECTS_DIR_NAME);
 
-    fs::create_dir_all(&inbox_dir)
-        .map_err(|e| format!("Impossible de créer le dossier inbox/ : {}", e))?;
+    fs::create_dir_all(&inbox_dir).map_err(|e| {
+        format!(
+            "Impossible de créer le dossier Boîte de dépôt ({}) : {}",
+            INBOX_DIR_PATH, e
+        )
+    })?;
     fs::create_dir_all(&projects_dir)
         .map_err(|e| format!("Impossible de créer le dossier projects/ : {}", e))?;
 
@@ -197,8 +202,54 @@ pub fn move_inbox_item(
         ));
     }
 
-    fs::rename(&source_path, &destination_path)
-        .map_err(|e| format!("Échec du déplacement sécurisé : {}", e))?;
+    move_entry_safely(&source_path, &destination_path)?;
+
+    Ok(())
+}
+
+/// Déplace un fichier ou dossier de manière sécurisée (tente rename en priorité,
+/// puis bascule sur copie + suppression si restriction d'OS ou cross-device).
+fn move_entry_safely(source: &Path, destination: &Path) -> Result<(), String> {
+    if fs::rename(source, destination).is_ok() {
+        return Ok(());
+    }
+
+    if source.is_file() {
+        fs::copy(source, destination)
+            .map_err(|e| format!("Échec de la copie du fichier : {}", e))?;
+        fs::remove_file(source)
+            .map_err(|e| format!("Échec de la suppression de la source : {}", e))?;
+        Ok(())
+    } else if source.is_dir() {
+        copy_dir_recursive(source, destination)?;
+        fs::remove_dir_all(source)
+            .map_err(|e| format!("Échec de la suppression du dossier source : {}", e))?;
+        Ok(())
+    } else {
+        Err("Type d'élément non supporté.".to_string())
+    }
+}
+
+/// Copie récursive d'un dossier vers une nouvelle destination.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst)
+        .map_err(|e| format!("Impossible de créer le dossier cible '{}' : {}", dst.display(), e))?;
+
+    let entries = fs::read_dir(src)
+        .map_err(|e| format!("Impossible de lire le dossier source '{}' : {}", src.display(), e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Entrée illisible : {}", e))?;
+        let entry_path = entry.path();
+        let target_path = dst.join(entry.file_name());
+
+        if entry_path.is_dir() {
+            copy_dir_recursive(&entry_path, &target_path)?;
+        } else {
+            fs::copy(&entry_path, &target_path)
+                .map_err(|e| format!("Échec de copie du fichier vers '{}' : {}", target_path.display(), e))?;
+        }
+    }
 
     Ok(())
 }

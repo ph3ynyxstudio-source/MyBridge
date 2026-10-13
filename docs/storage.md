@@ -26,21 +26,23 @@ le thème
 
 MyBr|dge n'est pas un explorateur pointant vers un dossier Windows externe : il agit comme un **gestionnaire de stockage autonome**.
 
-Les projets et leurs fichiers sont stockés directement dans le répertoire de données de l'application (géré en local par Rust/Tauri) :
+Les projets et leurs fichiers sont stockés directement dans le répertoire de données de l'application (géré en local par Rust/Tauri), tandis que le sas de dépôt est directement accessible à la racine de l'environnement :
 
 ```txt
-Stockage interne MyBr|dge (AppData / stockage local géré par Rust)
-├─ inbox/          → Boîte de dépôt (tampon d'ingestion)
-├─ projects/       → Projets pris en charge par MyBr|dge
+Sas de dépôt externe (accessible depuis Windows)
+└─ C:\Ph3yNyx.OS\00-Dropbox  → Boîte de dépôt (tampon d'ingestion surveillé par Rust)
+
+Stockage interne MyBr|dge (AppData / géré par Rust/Tauri)
+├─ projects/                → Coffre des projets pris en charge par MyBr|dge
 │  └─ {nom_du_projet}/
-└─ config/         → Préférences d'affichage et métadonnées de l'app
+└─ config/                  → Préférences d'affichage et métadonnées de l'app
 ```
 
 ### Flux d'ingestion
 
 L'entrée de nouveaux dossiers, fichiers ou assets se fait par **dépôt** :
-1. **Boîte de dépôt (DropBox / Inbox locale) ou Drag-and-Drop** : les éléments externes sont déposés dans la zone d'ingestion.
-2. **Détection et alerte** : Rust surveille la Boîte de dépôt et signale la présence de nouveaux éléments à l'UI (badge d'alerte jaune sur l'icône colis dans la Topbar).
+1. **Boîte de dépôt (`C:\Ph3yNyx.OS\00-Dropbox`) ou Drag-and-Drop** : les éléments externes sont déposés dans le sas d'ingestion.
+2. **Détection et alerte** : Rust surveille `C:\Ph3yNyx.OS\00-Dropbox` et signale la présence de nouveaux éléments à l'UI (badge d'alerte jaune sur l'icône colis dans la Topbar).
 3. **Prise en charge par Rust** : après validation de l'utilisateur, Rust **déplace** et prend en charge les dossiers/fichiers directement dans le stockage interne de MyBr|dge (`projects/{nom_du_projet}/`).
 
 ---
