@@ -4,7 +4,7 @@ pub mod storage;
 use launcher::launch_external_app;
 use storage::{
     create_project, get_inbox_items, init_storage_dirs, list_projects, move_inbox_item,
-    read_project_contents,
+    open_file_in_system, read_project_contents,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -23,6 +23,7 @@ pub fn run() {
             move_inbox_item,
             list_projects,
             read_project_contents,
+            open_file_in_system,
             launch_external_app
         ])
         .run(tauri::generate_context!())

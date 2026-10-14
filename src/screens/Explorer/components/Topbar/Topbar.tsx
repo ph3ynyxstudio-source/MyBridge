@@ -15,6 +15,10 @@ export interface TopbarProps {
   onSearchChange: (q: string) => void;
   onGoHome: () => void;
   onRefresh: () => void;
+  canGoBack?: boolean;
+  onGoBack?: () => void;
+  canGoForward?: boolean;
+  onGoForward?: () => void;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
@@ -30,6 +34,10 @@ export const Topbar: React.FC<TopbarProps> = ({
   onSearchChange,
   onGoHome,
   onRefresh,
+  canGoBack = false,
+  onGoBack,
+  canGoForward = false,
+  onGoForward,
 }) => {
   return (
     <header className="topbar">
@@ -148,7 +156,11 @@ export const Topbar: React.FC<TopbarProps> = ({
         <div className="topbar__nav-arrows">
           <button
             type="button"
-            className="topbar__icon-btn"
+            className={`topbar__icon-btn ${
+              !canGoBack ? "topbar__icon-btn--disabled" : ""
+            }`}
+            disabled={!canGoBack}
+            onClick={onGoBack}
             title={UI_TERMS.topbar.navBack}
             aria-label={UI_TERMS.topbar.navBack}
           >
@@ -159,7 +171,11 @@ export const Topbar: React.FC<TopbarProps> = ({
           </button>
           <button
             type="button"
-            className="topbar__icon-btn"
+            className={`topbar__icon-btn ${
+              !canGoForward ? "topbar__icon-btn--disabled" : ""
+            }`}
+            disabled={!canGoForward}
+            onClick={onGoForward}
             title={UI_TERMS.topbar.navForward}
             aria-label={UI_TERMS.topbar.navForward}
           >

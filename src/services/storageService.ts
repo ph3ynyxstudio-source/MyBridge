@@ -88,3 +88,13 @@ export async function launchExternalApp(
 ): Promise<void> {
   return invoke<void>("launch_external_app", { appId });
 }
+
+/**
+ * Ouvre un fichier spécifique dans l'application par défaut du système hôte (Windows).
+ */
+export async function openFileInSystem(
+  projectName: string,
+  subpath: string
+): Promise<void> {
+  return invoke<void>("open_file_in_system", { projectName, subpath });
+}

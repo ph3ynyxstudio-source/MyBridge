@@ -384,3 +384,61 @@ pub fn create_project(app: AppHandle, project_name: String) -> Result<String, St
 
     Ok(valid_name)
 }
+
+/// Ouvre un fichier spécifique dans l'application par défaut de Windows.
+/// Valide le nom du projet et le sous-chemin pour empêcher toute traversée (`..`).
+#[tauri::command]
+pub fn open_file_in_system(
+    app: AppHandle,
+    project_name: String,
+    subpath: String,
+) -> Result<(), String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+
+    let valid_project = validate_single_name(&project_name, "project_name")?;
+    let valid_subpath = validate_relative_subpath(Some(subpath))?;
+
+    if valid_subpath.as_os_str().is_empty() {
+        return Err("Le sous-chemin du fichier ne peut pas être vide.".to_string());
+    }
+
+    let project_root = projects_dir.join(&valid_project);
+    if !project_root.exists() || !project_root.is_dir() {
+        return Err(format!(
+            "Le projet '{}' est introuvable dans projects/.",
+            valid_project
+        ));
+    }
+
+    let file_path = project_root.join(&valid_subpath);
+    if !file_path.exists() {
+        return Err(format!(
+            "Le fichier est introuvable sur le disque : {:?}",
+            file_path
+        ));
+    }
+
+    if file_path.is_dir() {
+        return Err("La cible est un dossier, impossible de l'ouvrir comme un fichier.".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        Command::new("explorer")
+            .arg(&file_path)
+            .spawn()
+            .map_err(|e| format!("Impossible d'ouvrir le fichier dans le système : {}", e))?;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        let path_str = file_path.to_string_lossy().to_string();
+        app.opener()
+            .open_path(path_str, None::<&str>)
+            .map_err(|e| format!("Impossible d'ouvrir le fichier : {}", e))?;
+    }
+
+    Ok(())
+}

@@ -82,6 +82,13 @@
   color: var(--accent-blue);
 }
 
+.topbar__icon-btn:disabled,
+.topbar__icon-btn--disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 /* Bouton Boîte de dépôt (Inbox) + Badge jaune d'alerte */
 .topbar__inbox-btn {
   position: relative;

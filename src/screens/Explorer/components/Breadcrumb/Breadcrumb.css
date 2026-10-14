@@ -1,0 +1,73 @@
+/* Fil d'Ariane de navigation dans les projets (voir docs/theme.md) */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+  background-color: rgba(5, 8, 20, 0.45);
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  margin-bottom: 18px;
+  min-height: 38px;
+}
+
+.breadcrumb__list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.breadcrumb__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  transition: all 0.14s ease;
+}
+
+.breadcrumb__item--btn {
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.breadcrumb__item--btn:hover {
+  color: var(--accent-blue);
+  background-color: var(--accent-blue-muted);
+  border-color: var(--accent-blue-border);
+}
+
+.breadcrumb__item--current {
+  color: var(--text-primary);
+  font-weight: 600;
+  background-color: rgba(84, 214, 255, 0.08);
+  border: 1px solid rgba(84, 214, 255, 0.22);
+}
+
+.breadcrumb__icon {
+  width: 14px;
+  height: 14px;
+  color: var(--accent-blue);
+  flex-shrink: 0;
+}
+
+.breadcrumb__label {
+  white-space: nowrap;
+}
+
+.breadcrumb__separator {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.breadcrumb__separator svg {
+  width: 11px;
+  height: 11px;
+}

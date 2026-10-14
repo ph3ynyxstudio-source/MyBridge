@@ -6,6 +6,7 @@ import {
   InboxItem,
   listProjects,
   moveInboxItem,
+  openFileInSystem,
   ProjectFolder,
   readProjectContents,
 } from "../../services/storageService";
@@ -103,6 +104,12 @@ export const Explorer: React.FC = () => {
 
   // Barre latérale droite (Raccourcis d'applications VespΣr, Chr0nosV3rs)
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState<boolean>(true);
+
+  // Historique de navigation (précédent / suivant)
+  const [navHistory, setNavHistory] = useState<
+    Array<{ project: string; subpath?: string }>
+  >([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
 
   /**
    * Charge les éléments en attente dans la Boîte de dépôt (`inbox/`).
@@ -266,6 +273,13 @@ export const Explorer: React.FC = () => {
         });
 
         await loadProjectFolder(targetProject, preferredSubpath);
+        setNavHistory((prev) => {
+          if (prev.length === 0) {
+            return [{ project: targetProject, subpath: preferredSubpath }];
+          }
+          return prev;
+        });
+        setHistoryIndex((prev) => (prev === -1 ? 0 : prev));
       } catch (err) {
         console.error("Erreur lors du chargement des projets :", err);
       }
@@ -354,15 +368,80 @@ export const Explorer: React.FC = () => {
   };
 
   /**
+   * Navigue vers un projet et un sous-dossier, en alimentant l'historique de navigation.
+   */
+  const navigateTo = useCallback(
+    (projectName: string, subpath?: string, replace = false) => {
+      if (!projectName) return;
+      setActiveProject(projectName);
+      setCurrentSubpath(subpath);
+      setExpandedProjects((prev) =>
+        prev.includes(projectName) ? prev : [...prev, projectName]
+      );
+      void loadProjectFolder(projectName, subpath);
+
+      setNavHistory((prev) => {
+        const current = prev[historyIndex];
+        if (
+          current &&
+          current.project === projectName &&
+          current.subpath === subpath
+        ) {
+          return prev;
+        }
+
+        if (replace || historyIndex === -1) {
+          return [{ project: projectName, subpath }];
+        }
+
+        const next = [
+          ...prev.slice(0, historyIndex + 1),
+          { project: projectName, subpath },
+        ];
+        return next;
+      });
+
+      if (replace || historyIndex === -1) {
+        setHistoryIndex(0);
+      } else {
+        setHistoryIndex((prev) => prev + 1);
+      }
+    },
+    [historyIndex, loadProjectFolder]
+  );
+
+  const canGoBack = historyIndex > 0;
+  const canGoForward = historyIndex >= 0 && historyIndex < navHistory.length - 1;
+
+  const handleGoBack = useCallback(() => {
+    if (!canGoBack) return;
+    const targetIdx = historyIndex - 1;
+    const target = navHistory[targetIdx];
+    if (target) {
+      setHistoryIndex(targetIdx);
+      setActiveProject(target.project);
+      setCurrentSubpath(target.subpath);
+      void loadProjectFolder(target.project, target.subpath);
+    }
+  }, [canGoBack, historyIndex, navHistory, loadProjectFolder]);
+
+  const handleGoForward = useCallback(() => {
+    if (!canGoForward) return;
+    const targetIdx = historyIndex + 1;
+    const target = navHistory[targetIdx];
+    if (target) {
+      setHistoryIndex(targetIdx);
+      setActiveProject(target.project);
+      setCurrentSubpath(target.subpath);
+      void loadProjectFolder(target.project, target.subpath);
+    }
+  }, [canGoForward, historyIndex, navHistory, loadProjectFolder]);
+
+  /**
    * Sélection d'un projet depuis la Topbar.
    */
   const handleSelectProject = (projectName: string) => {
-    setActiveProject(projectName);
-    setCurrentSubpath(undefined);
-    setExpandedProjects((prev) =>
-      prev.includes(projectName) ? prev : [...prev, projectName]
-    );
-    void loadProjectFolder(projectName, undefined);
+    navigateTo(projectName, undefined);
 
     // Si le second projet est identique, on bascule le second sur un autre si possible
     if (secondaryProject === projectName) {
@@ -382,9 +461,7 @@ export const Explorer: React.FC = () => {
     projectName: string,
     folderName?: string
   ) => {
-    setActiveProject(projectName);
-    setCurrentSubpath(folderName);
-    void loadProjectFolder(projectName, folderName);
+    navigateTo(projectName, folderName);
   };
 
   /**
@@ -399,8 +476,56 @@ export const Explorer: React.FC = () => {
    */
   const handleOpenFolderEntry = (entry: GridEntry) => {
     if (!activeProject || !entry.isFolder) return;
-    setCurrentSubpath(entry.id);
-    void loadProjectFolder(activeProject, entry.id);
+    navigateTo(activeProject, entry.id);
+  };
+
+  /**
+   * Navigation via le fil d'Ariane (Breadcrumb) du panneau principal.
+   */
+  const handleNavigateBreadcrumb = (targetSubpath?: string) => {
+    if (!activeProject) return;
+    navigateTo(activeProject, targetSubpath);
+  };
+
+  /**
+   * Double-clic sur un fichier de la grille : ouverture dans l'application par défaut de Windows.
+   */
+  const handleOpenFileEntry = async (entry: GridEntry) => {
+    if (!activeProject || entry.isFolder) return;
+    try {
+      await openFileInSystem(activeProject, entry.id);
+    } catch (err: unknown) {
+      const errorMsg = typeof err === "string" ? err : String(err);
+      console.error(
+        `[Explorer] Erreur lors de l'ouverture du fichier '${entry.label}' :`,
+        errorMsg
+      );
+    }
+  };
+
+  /**
+   * Navigation via le fil d'Ariane du second panneau en Split-View.
+   */
+  const handleNavigateSecondaryBreadcrumb = (targetSubpath?: string) => {
+    if (!secondaryProject) return;
+    setSecondarySubpath(targetSubpath);
+    void loadSecondaryProjectFolder(secondaryProject, targetSubpath);
+  };
+
+  /**
+   * Double-clic sur un fichier du second volet : ouverture dans le système hôte.
+   */
+  const handleOpenSecondaryFileEntry = async (entry: GridEntry) => {
+    if (!secondaryProject || entry.isFolder) return;
+    try {
+      await openFileInSystem(secondaryProject, entry.id);
+    } catch (err: unknown) {
+      const errorMsg = typeof err === "string" ? err : String(err);
+      console.error(
+        `[Explorer] Erreur ouverture fichier second volet '${entry.label}' :`,
+        errorMsg
+      );
+    }
   };
 
   /**
@@ -431,8 +556,7 @@ export const Explorer: React.FC = () => {
 
   const handleGoHome = () => {
     if (!activeProject) return;
-    setCurrentSubpath(undefined);
-    void loadProjectFolder(activeProject, undefined);
+    navigateTo(activeProject, undefined);
   };
 
   /**
@@ -492,6 +616,10 @@ export const Explorer: React.FC = () => {
         onSearchChange={setSearchQuery}
         onGoHome={handleGoHome}
         onRefresh={handleRefreshAll}
+        canGoBack={canGoBack}
+        onGoBack={handleGoBack}
+        canGoForward={canGoForward}
+        onGoForward={handleGoForward}
       />
 
       {/* Panneau contextuel de raccourcis ancré sous le bouton (+) */}
@@ -520,11 +648,14 @@ export const Explorer: React.FC = () => {
 
         <GridView
           hasActiveProject={Boolean(activeProject)}
+          activeProject={activeProject}
           currentPathLabel={currentSubpath}
+          onNavigateBreadcrumb={handleNavigateBreadcrumb}
           entries={primaryGridEntries}
           selectedEntryId={selectedEntryId}
           onSelectEntry={handleSelectGridEntry}
           onOpenFolderEntry={handleOpenFolderEntry}
+          onOpenFileEntry={handleOpenFileEntry}
           onAddFolderOrFiles={() => setIsInboxDrawerOpen(true)}
           isSplitViewActive={isSplitViewActive}
           projects={projects}
@@ -532,10 +663,12 @@ export const Explorer: React.FC = () => {
           onSelectSecondaryProject={handleSelectSecondaryProject}
           secondaryPathLabel={secondarySubpath}
           onResetSecondarySubpath={handleResetSecondarySubpath}
+          onNavigateSecondaryBreadcrumb={handleNavigateSecondaryBreadcrumb}
           secondaryEntries={secondaryGridEntries}
           selectedSecondaryEntryId={selectedSecondaryEntryId}
           onSelectSecondaryEntry={(entry) => setSelectedSecondaryEntryId(entry.id)}
           onOpenSecondaryFolderEntry={handleOpenSecondaryFolderEntry}
+          onOpenSecondaryFileEntry={handleOpenSecondaryFileEntry}
         />
 
         <EcosystemSidebar
