@@ -34,6 +34,10 @@ export const UI_TERMS = {
       "Créez un dossier de projet dans l'espace de stockage local de MyBr|dge (projects/) pour commencer.",
     emptySecondary: "Aucun élément dans ce sous-dossier",
     previewDrawerToggle: "Masquer / afficher le volet secondaire",
+    splitViewTitle: "Split-View (2 projets)",
+    splitViewClose: "Désactiver le double affichage",
+    splitViewSelectProject: "Deuxième projet :",
+    splitViewSingleProjectNotice: "Créez un deuxième projet pour l'afficher en Split-View.",
   },
   inboxDrawer: {
     title: "Boîte de dépôt (Inbox)",
@@ -68,5 +72,7 @@ export const UI_TERMS = {
     sectionLabel: "Raccourcis Écosystème PH3YNYX.OS",
     vesper: "VespΣr",
     chronosvers: "Chr0nosV3rs",
+    toggleCollapse: "Replier la barre d'applications",
+    toggleExpand: "Déplier la barre d'applications",
   },
 } as const;

@@ -1,5 +1,7 @@
+pub mod launcher;
 pub mod storage;
 
+use launcher::launch_external_app;
 use storage::{
     create_project, get_inbox_items, init_storage_dirs, list_projects, move_inbox_item,
     read_project_contents,
@@ -20,7 +22,8 @@ pub fn run() {
             get_inbox_items,
             move_inbox_item,
             list_projects,
-            read_project_contents
+            read_project_contents,
+            launch_external_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

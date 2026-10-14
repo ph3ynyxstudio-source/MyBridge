@@ -12,25 +12,27 @@ export interface ProjectTreeNode {
 export interface TreePanelProps {
   isOpen: boolean;
   size: TreePanelSize;
-  onToggleSize: () => void;
   projects: ProjectTreeNode[];
   expandedProjects: string[];
   onToggleProjectExpand: (projectName: string) => void;
   activeProject: string;
   activeFolder: string;
   onSelectFolder: (projectName: string, folderName?: string) => void;
+  isSplitViewActive: boolean;
+  onToggleSplitView: (active: boolean) => void;
 }
 
 export const TreePanel: React.FC<TreePanelProps> = ({
   isOpen,
   size,
-  onToggleSize,
   projects,
   expandedProjects,
   onToggleProjectExpand,
   activeProject,
   activeFolder,
   onSelectFolder,
+  isSplitViewActive,
+  onToggleSplitView,
 }) => {
   if (!isOpen) {
     return null;
@@ -79,37 +81,47 @@ export const TreePanel: React.FC<TreePanelProps> = ({
         )}
       </div>
 
-      {/* Pied du tree-panel : sélecteur de taille fixe Compact / Large */}
+      {/* Pied du tree-panel : sélecteur 1 vs 2 dossiers (Split-View 2 projets) */}
       <div className="tree-panel__footer">
-        <button
-          type="button"
-          className="tree-panel__mode-switch"
-          onClick={onToggleSize}
-          title={
-            size === "compact"
-              ? UI_TERMS.treePanel.sizeToggleCompact
-              : UI_TERMS.treePanel.sizeToggleLarge
-          }
-        >
-          <span
+        <div className="tree-panel__split-switch">
+          {/* Bouton 1 dossier : Mode simple panneau */}
+          <button
+            type="button"
             className={`tree-panel__mode-pill ${
-              size === "compact" ? "tree-panel__mode-pill--active" : ""
+              !isSplitViewActive ? "tree-panel__mode-pill--active" : ""
             }`}
+            onClick={() => onToggleSplitView(false)}
+            title="Mode simple panneau (1 projet)"
+            aria-label="Mode simple panneau (1 projet)"
           >
             <svg viewBox="0 0 24 20" fill="currentColor">
               <path d="M2 4a2 2 0 0 1 2-2h6l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4z" />
             </svg>
-          </span>
-          <span
-            className={`tree-panel__mode-pill tree-panel__mode-pill--purple ${
-              size === "large" ? "tree-panel__mode-pill--active" : ""
+          </button>
+
+          {/* Bouton 2 dossiers : Mode double panneau (Split-View) */}
+          <button
+            type="button"
+            className={`tree-panel__mode-pill tree-panel__mode-pill--split ${
+              isSplitViewActive ? "tree-panel__mode-pill--split-active" : ""
             }`}
+            onClick={() => onToggleSplitView(true)}
+            title="Mode double panneau / Split-View (2 projets)"
+            aria-label="Mode double panneau / Split-View (2 projets)"
           >
-            <svg viewBox="0 0 24 20" fill="currentColor">
-              <path d="M2 4a2 2 0 0 1 2-2h6l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4z" />
+            <svg viewBox="0 0 26 22" fill="none">
+              <path
+                d="M5 2a2 2 0 0 1 2-2h5l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-1V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"
+                fill="var(--accent-purple)"
+                opacity="0.9"
+              />
+              <path
+                d="M1 8a2 2 0 0 1 2-2h6l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8z"
+                fill="var(--accent-blue)"
+              />
             </svg>
-          </span>
-        </button>
+          </button>
+        </div>
       </div>
     </aside>
   );

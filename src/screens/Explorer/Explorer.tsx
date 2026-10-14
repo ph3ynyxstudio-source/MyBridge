@@ -81,8 +81,13 @@ export const Explorer: React.FC = () => {
 
   const [projectContents, setProjectContents] = useState<ProjectFolder[]>([]);
   const [selectedEntryId, setSelectedEntryId] = useState<string>("");
-  const [secondaryFolders, setSecondaryFolders] = useState<ProjectFolder[]>([]);
-  const [selectedSubEntryId, setSelectedSubEntryId] = useState<string>("");
+
+  // Mode Split-View (Deuxième projet simultané)
+  const [isSplitViewActive, setIsSplitViewActive] = useState<boolean>(false);
+  const [secondaryProject, setSecondaryProject] = useState<string>("");
+  const [secondarySubpath, setSecondarySubpath] = useState<string | undefined>(undefined);
+  const [secondaryContents, setSecondaryContents] = useState<ProjectFolder[]>([]);
+  const [selectedSecondaryEntryId, setSelectedSecondaryEntryId] = useState<string>("");
 
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
   const [isInboxDrawerOpen, setIsInboxDrawerOpen] = useState<boolean>(false);
@@ -90,12 +95,14 @@ export const Explorer: React.FC = () => {
   const [isTreeOpen, setIsTreeOpen] = useState<boolean>(
     APP_CONFIG.defaults.treePanelOpen
   );
-  const [treeSize, setTreeSize] = useState<TreePanelSize>(
+  const [treeSize] = useState<TreePanelSize>(
     APP_CONFIG.defaults.treePanelSize
   );
   const [expandedProjects, setExpandedProjects] = useState<string[]>([]);
-  const [isPreviewDrawerOpen, setIsPreviewDrawerOpen] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // Barre latérale droite (Raccourcis d'applications VespΣr, Chr0nosV3rs)
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState<boolean>(true);
 
   /**
    * Charge les éléments en attente dans la Boîte de dépôt (`inbox/`).
@@ -112,11 +119,13 @@ export const Explorer: React.FC = () => {
   /**
    * Charge le contenu d'un projet (et d'un sous-dossier éventuel) depuis Rust.
    */
+  /**
+   * Charge le contenu d'un projet (et d'un sous-dossier éventuel) depuis Rust.
+   */
   const loadProjectFolder = useCallback(
     async (projectName: string, subpath?: string) => {
       if (!projectName) {
         setProjectContents([]);
-        setSecondaryFolders([]);
         setSelectedEntryId("");
         return;
       }
@@ -136,20 +145,44 @@ export const Explorer: React.FC = () => {
           }));
         }
 
-        // Sélection par défaut du premier élément pour alimenter le volet secondaire
         if (contents.length > 0) {
           const first = contents[0];
-          const firstId = first.chemin_relatif || first.nom;
-          setSelectedEntryId(firstId);
-          setSecondaryFolders(first.enfants_optionnels ?? []);
+          setSelectedEntryId(first.chemin_relatif || first.nom);
         } else {
           setSelectedEntryId("");
-          setSecondaryFolders([]);
         }
       } catch (err) {
         console.error("Erreur lors de la lecture du projet :", err);
         setProjectContents([]);
-        setSecondaryFolders([]);
+      }
+    },
+    []
+  );
+
+  /**
+   * Charge le contenu du second projet affiché en Split-View.
+   */
+  const loadSecondaryProjectFolder = useCallback(
+    async (projectName: string, subpath?: string) => {
+      if (!projectName) {
+        setSecondaryContents([]);
+        setSelectedSecondaryEntryId("");
+        return;
+      }
+
+      try {
+        const contents = await readProjectContents(projectName, subpath);
+        setSecondaryContents(contents);
+        if (contents.length > 0) {
+          const first = contents[0];
+          setSelectedSecondaryEntryId(first.chemin_relatif || first.nom);
+        } else {
+          setSelectedSecondaryEntryId("");
+        }
+      } catch (err) {
+        console.error("Erreur lors de la lecture du second projet :", err);
+        setSecondaryContents([]);
+        setSelectedSecondaryEntryId("");
       }
     },
     []
@@ -189,7 +222,8 @@ export const Explorer: React.FC = () => {
         if (list.length === 0) {
           setActiveProject("");
           setProjectContents([]);
-          setSecondaryFolders([]);
+          setSecondaryProject("");
+          setSecondaryContents([]);
           return;
         }
 
@@ -220,6 +254,16 @@ export const Explorer: React.FC = () => {
         setExpandedProjects((prev) =>
           prev.includes(targetProject) ? prev : [...prev, targetProject]
         );
+
+        // Sélection intelligente du second projet pour le Split-View
+        const defaultSecondary =
+          list.find((p) => p !== targetProject) || list[0] || "";
+        setSecondaryProject((prev) => {
+          if (prev && list.includes(prev) && prev !== targetProject) {
+            return prev;
+          }
+          return defaultSecondary;
+        });
 
         await loadProjectFolder(targetProject, preferredSubpath);
       } catch (err) {
@@ -258,11 +302,56 @@ export const Explorer: React.FC = () => {
   }, [projectContents, searchQuery]);
 
   /**
-   * Entrées du volet d'aperçu secondaire.
+   * Entrées du second volet (Split-View projet 2).
    */
   const secondaryGridEntries: GridEntry[] = useMemo(() => {
-    return secondaryFolders.map(toGridEntry);
-  }, [secondaryFolders]);
+    return secondaryContents.map(toGridEntry);
+  }, [secondaryContents]);
+
+  /**
+   * Bascule du mode Split-View (1 projet vs 2 projets simultanés).
+   */
+  const handleToggleSplitView = (active: boolean) => {
+    setIsSplitViewActive(active);
+    if (active) {
+      const projToLoad =
+        secondaryProject ||
+        projects.find((p) => p !== activeProject) ||
+        projects[0] ||
+        "";
+      if (projToLoad) {
+        setSecondaryProject(projToLoad);
+        void loadSecondaryProjectFolder(projToLoad, secondarySubpath);
+      }
+    }
+  };
+
+  /**
+   * Sélection d'un projet pour le volet Split-View secondaire.
+   */
+  const handleSelectSecondaryProject = (projectName: string) => {
+    setSecondaryProject(projectName);
+    setSecondarySubpath(undefined);
+    void loadSecondaryProjectFolder(projectName, undefined);
+  };
+
+  /**
+   * Navigation double-clic dans un dossier du second volet Split-View.
+   */
+  const handleOpenSecondaryFolderEntry = (entry: GridEntry) => {
+    if (!secondaryProject || !entry.isFolder) return;
+    setSecondarySubpath(entry.id);
+    void loadSecondaryProjectFolder(secondaryProject, entry.id);
+  };
+
+  /**
+   * Retour à la racine du second projet en Split-View.
+   */
+  const handleResetSecondarySubpath = () => {
+    if (!secondaryProject) return;
+    setSecondarySubpath(undefined);
+    void loadSecondaryProjectFolder(secondaryProject, undefined);
+  };
 
   /**
    * Sélection d'un projet depuis la Topbar.
@@ -274,6 +363,16 @@ export const Explorer: React.FC = () => {
       prev.includes(projectName) ? prev : [...prev, projectName]
     );
     void loadProjectFolder(projectName, undefined);
+
+    // Si le second projet est identique, on bascule le second sur un autre si possible
+    if (secondaryProject === projectName) {
+      const other = projects.find((p) => p !== projectName);
+      if (other) {
+        setSecondaryProject(other);
+        setSecondarySubpath(undefined);
+        void loadSecondaryProjectFolder(other, undefined);
+      }
+    }
   };
 
   /**
@@ -284,61 +383,15 @@ export const Explorer: React.FC = () => {
     folderName?: string
   ) => {
     setActiveProject(projectName);
-    if (!folderName) {
-      setCurrentSubpath(undefined);
-      void loadProjectFolder(projectName, undefined);
-    } else {
-      // On charge la racine du projet et on sélectionne directement ce sous-dossier pour afficher son aperçu
-      setCurrentSubpath(undefined);
-      void readProjectContents(projectName, undefined).then(async (contents) => {
-        setProjectContents(contents);
-        const match = contents.find((item) => item.nom === folderName);
-        if (match) {
-          const matchId = match.chemin_relatif || match.nom;
-          setSelectedEntryId(matchId);
-          setIsPreviewDrawerOpen(true);
-          if (match.enfants_optionnels) {
-            setSecondaryFolders(match.enfants_optionnels);
-          } else if (match.est_dossier) {
-            const sub = await readProjectContents(projectName, folderName);
-            setSecondaryFolders(sub);
-          } else {
-            setSecondaryFolders([]);
-          }
-        }
-      });
-    }
+    setCurrentSubpath(folderName);
+    void loadProjectFolder(projectName, folderName);
   };
 
   /**
-   * Clic simple sur une tuile de la grille principale : met en surbrillance et peuple le volet secondaire.
+   * Clic simple sur une tuile de la grille principale : met en surbrillance.
    */
-  const handleSelectGridEntry = async (entry: GridEntry) => {
+  const handleSelectGridEntry = (entry: GridEntry) => {
     setSelectedEntryId(entry.id);
-    setSelectedSubEntryId("");
-
-    const folderObj = projectContents.find(
-      (f) => (f.chemin_relatif || f.nom) === entry.id
-    );
-    if (!folderObj || !folderObj.est_dossier) {
-      setSecondaryFolders([]);
-      return;
-    }
-
-    setIsPreviewDrawerOpen(true);
-    if (folderObj.enfants_optionnels) {
-      setSecondaryFolders(folderObj.enfants_optionnels);
-    } else if (activeProject) {
-      try {
-        const sub = await readProjectContents(
-          activeProject,
-          folderObj.chemin_relatif
-        );
-        setSecondaryFolders(sub);
-      } catch {
-        setSecondaryFolders([]);
-      }
-    }
   };
 
   /**
@@ -369,10 +422,6 @@ export const Explorer: React.FC = () => {
         ? prev.filter((p) => p !== projectName)
         : [...prev, projectName]
     );
-  };
-
-  const handleToggleTreeSize = () => {
-    setTreeSize((prev) => (prev === "compact" ? "large" : "compact"));
   };
 
   const handleRefreshAll = () => {
@@ -459,13 +508,14 @@ export const Explorer: React.FC = () => {
         <TreePanel
           isOpen={isTreeOpen}
           size={treeSize}
-          onToggleSize={handleToggleTreeSize}
           projects={treeNodes}
           expandedProjects={expandedProjects}
           onToggleProjectExpand={handleToggleProjectExpand}
           activeProject={activeProject}
-          activeFolder={selectedEntryId}
+          activeFolder={currentSubpath || selectedEntryId}
           onSelectFolder={handleSelectFolderFromTree}
+          isSplitViewActive={isSplitViewActive}
+          onToggleSplitView={handleToggleSplitView}
         />
 
         <GridView
@@ -476,14 +526,22 @@ export const Explorer: React.FC = () => {
           onSelectEntry={handleSelectGridEntry}
           onOpenFolderEntry={handleOpenFolderEntry}
           onAddFolderOrFiles={() => setIsInboxDrawerOpen(true)}
-          subEntries={secondaryGridEntries}
-          selectedSubEntryId={selectedSubEntryId}
-          onSelectSubEntry={(sub) => setSelectedSubEntryId(sub.id)}
-          isPreviewDrawerOpen={isPreviewDrawerOpen}
-          onTogglePreviewDrawer={() => setIsPreviewDrawerOpen((prev) => !prev)}
+          isSplitViewActive={isSplitViewActive}
+          projects={projects}
+          secondaryProject={secondaryProject}
+          onSelectSecondaryProject={handleSelectSecondaryProject}
+          secondaryPathLabel={secondarySubpath}
+          onResetSecondarySubpath={handleResetSecondarySubpath}
+          secondaryEntries={secondaryGridEntries}
+          selectedSecondaryEntryId={selectedSecondaryEntryId}
+          onSelectSecondaryEntry={(entry) => setSelectedSecondaryEntryId(entry.id)}
+          onOpenSecondaryFolderEntry={handleOpenSecondaryFolderEntry}
         />
 
-        <EcosystemSidebar />
+        <EcosystemSidebar
+          isOpen={isRightSidebarOpen}
+          onToggle={() => setIsRightSidebarOpen((prev) => !prev)}
+        />
       </main>
 
       <InboxDrawer

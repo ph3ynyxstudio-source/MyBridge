@@ -18,11 +18,18 @@ export interface GridViewProps {
   onSelectEntry: (entry: GridEntry) => void;
   onOpenFolderEntry?: (entry: GridEntry) => void;
   onAddFolderOrFiles: () => void;
-  subEntries?: GridEntry[];
-  selectedSubEntryId?: string;
-  onSelectSubEntry?: (entry: GridEntry) => void;
-  isPreviewDrawerOpen: boolean;
-  onTogglePreviewDrawer: () => void;
+
+  // Split-View (Double affichage 2 projets distincts)
+  isSplitViewActive: boolean;
+  projects: string[];
+  secondaryProject: string;
+  onSelectSecondaryProject: (projectName: string) => void;
+  secondaryPathLabel?: string;
+  onResetSecondarySubpath?: () => void;
+  secondaryEntries?: GridEntry[];
+  selectedSecondaryEntryId?: string;
+  onSelectSecondaryEntry?: (entry: GridEntry) => void;
+  onOpenSecondaryFolderEntry?: (entry: GridEntry) => void;
 }
 
 export const GridView: React.FC<GridViewProps> = ({
@@ -32,16 +39,21 @@ export const GridView: React.FC<GridViewProps> = ({
   onSelectEntry,
   onOpenFolderEntry,
   onAddFolderOrFiles,
-  subEntries = [],
-  selectedSubEntryId = "",
-  onSelectSubEntry,
-  isPreviewDrawerOpen,
-  onTogglePreviewDrawer,
+  isSplitViewActive,
+  projects,
+  secondaryProject,
+  onSelectSecondaryProject,
+  secondaryPathLabel,
+  onResetSecondarySubpath,
+  secondaryEntries = [],
+  selectedSecondaryEntryId = "",
+  onSelectSecondaryEntry,
+  onOpenSecondaryFolderEntry,
 }) => {
   return (
-    <section className="grid-view">
-      {/* Grille principale du projet courant sur fond texturé carbone */}
-      <div className="grid-view__primary">
+    <section className={`grid-view ${isSplitViewActive ? "grid-view--split-active" : ""}`}>
+      {/* PANNEAU PRINCIPAL (PROJET 1) */}
+      <div className={`grid-view__primary ${isSplitViewActive ? "grid-view__primary--split" : ""}`}>
         {!hasActiveProject ? (
           <div className="grid-view__empty-card">
             <h3 className="grid-view__empty-title">
@@ -91,40 +103,66 @@ export const GridView: React.FC<GridViewProps> = ({
         )}
       </div>
 
-      {/* Volet secondaire / aperçu du dossier sélectionné (bordure cyan arrondie fidèle au mockup) */}
-      {hasActiveProject && isPreviewDrawerOpen && (
+      {/* SECOND PANNEAU (SPLIT-VIEW : PROJET 2 DISTINCT) */}
+      {isSplitViewActive && (
         <aside className="grid-view__secondary">
-          {subEntries.length === 0 ? (
+          {/* En-tête du second projet */}
+          <div className="grid-view__secondary-header">
+            <div className="grid-view__secondary-title-group">
+              <span className="grid-view__secondary-badge">PROJET 2</span>
+              {projects.length > 0 ? (
+                <select
+                  className="grid-view__secondary-select"
+                  value={secondaryProject}
+                  onChange={(e) => onSelectSecondaryProject(e.target.value)}
+                  aria-label={UI_TERMS.gridView.splitViewSelectProject}
+                >
+                  {projects.map((proj) => (
+                    <option key={proj} value={proj}>
+                      {proj}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="grid-view__secondary-name">Aucun</span>
+              )}
+            </div>
+
+            {secondaryPathLabel && onResetSecondarySubpath && (
+              <button
+                type="button"
+                className="grid-view__secondary-back-btn"
+                onClick={onResetSecondarySubpath}
+                title="Retour à la racine du second projet"
+              >
+                ← Racine
+              </button>
+            )}
+          </div>
+
+          {/* Grille du second projet */}
+          {secondaryEntries.length === 0 ? (
             <div className="grid-view__secondary-empty">
               {UI_TERMS.gridView.emptySecondary}
             </div>
           ) : (
             <div className="grid-view__secondary-tiles">
-              {subEntries.map((sub) => (
+              {secondaryEntries.map((sub) => (
                 <FolderCard
                   key={sub.id}
                   label={sub.label}
                   kind={sub.kind}
-                  selected={sub.id === selectedSubEntryId}
-                  onClick={() => onSelectSubEntry && onSelectSubEntry(sub)}
+                  selected={sub.id === selectedSecondaryEntryId}
+                  onClick={() => onSelectSecondaryEntry && onSelectSecondaryEntry(sub)}
+                  onDoubleClick={() => {
+                    if (sub.isFolder && onOpenSecondaryFolderEntry) {
+                      onOpenSecondaryFolderEntry(sub);
+                    }
+                  }}
                 />
               ))}
             </div>
           )}
-
-          {/* Poignée latérale droite (pilule cyan avec flèche) */}
-          <button
-            type="button"
-            className="grid-view__drawer-handle"
-            onClick={onTogglePreviewDrawer}
-            title={UI_TERMS.gridView.previewDrawerToggle}
-            aria-label={UI_TERMS.gridView.previewDrawerToggle}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-              <path d="M5 12h14" />
-              <path d="M13 6l6 6-6 6" />
-            </svg>
-          </button>
         </aside>
       )}
     </section>

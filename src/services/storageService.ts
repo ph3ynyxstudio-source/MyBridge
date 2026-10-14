@@ -79,3 +79,12 @@ export async function createProject(projectName: string): Promise<string> {
   const cleanName = projectName.trim();
   return invoke<string>("create_project", { projectName: cleanName });
 }
+
+/**
+ * Lance une application externe de l'écosystème PH3YNYX.OS (VespΣr ou Chr0nosV3rs).
+ */
+export async function launchExternalApp(
+  appId: "vesper" | "chronosvers"
+): Promise<void> {
+  return invoke<void>("launch_external_app", { appId });
+}
