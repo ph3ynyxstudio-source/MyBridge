@@ -98,3 +98,61 @@ export async function openFileInSystem(
 ): Promise<void> {
   return invoke<void>("open_file_in_system", { projectName, subpath });
 }
+
+/**
+ * Déplace un élément vers la corbeille sécurisée (trash/).
+ */
+export async function moveToTrash(
+  projectName: string,
+  subpath: string
+): Promise<void> {
+  return invoke<void>("move_to_trash", { projectName, subpath });
+}
+
+/**
+ * Copie récursivement un fichier ou dossier vers un projet / sous-chemin cible.
+ */
+export async function copyItem(
+  srcProject: string,
+  srcSubpath: string,
+  destProject: string,
+  destSubpath?: string
+): Promise<void> {
+  return invoke<void>("copy_item", {
+    srcProject,
+    srcSubpath,
+    destProject,
+    destSubpath: destSubpath || null,
+  });
+}
+
+/**
+ * Déplace un fichier ou dossier vers un projet / sous-chemin cible.
+ */
+export async function moveItem(
+  srcProject: string,
+  srcSubpath: string,
+  destProject: string,
+  destSubpath?: string
+): Promise<void> {
+  return invoke<void>("move_item", {
+    srcProject,
+    srcSubpath,
+    destProject,
+    destSubpath: destSubpath || null,
+  });
+}
+
+/**
+ * Récupère la liste des éléments présents dans la corbeille.
+ */
+export async function getTrashItems(): Promise<InboxItem[]> {
+  return invoke<InboxItem[]>("get_trash_items");
+}
+
+/**
+ * Supprime définitivement tout le contenu de la corbeille (action explicite).
+ */
+export async function emptyTrash(): Promise<void> {
+  return invoke<void>("empty_trash");
+}

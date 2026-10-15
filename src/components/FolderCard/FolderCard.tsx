@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import "./FolderCard.css";
 
 export type TileKind = "folder" | "image" | "file" | "add";
@@ -9,6 +9,12 @@ export interface FolderCardProps {
   selected?: boolean;
   onClick?: () => void;
   onDoubleClick?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDragLeave?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
 }
 
 export const FolderCard: React.FC<FolderCardProps> = ({
@@ -17,21 +23,69 @@ export const FolderCard: React.FC<FolderCardProps> = ({
   selected = false,
   onClick,
   onDoubleClick,
+  onContextMenu,
+  draggable = false,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
 }) => {
   const isAddTile = kind === "add";
+  const [isDragOver, setIsDragOver] = useState(false);
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className={[
         "folder-card",
         selected ? "folder-card--selected" : "",
         isAddTile ? "folder-card--add" : "",
+        isDragOver ? "folder-card--drag-over" : "",
       ]
         .filter(Boolean)
         .join(" ")}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick?.();
+        }
+      }}
       onDoubleClick={onDoubleClick}
+      onContextMenu={(e) => {
+        if (onContextMenu) {
+          e.preventDefault();
+          e.stopPropagation();
+          onContextMenu(e);
+        }
+      }}
+      draggable={draggable && !isAddTile}
+      onDragStart={(e) => {
+        e.stopPropagation();
+        onDragStart?.(e);
+      }}
+      onDragOver={(e) => {
+        if (kind === "folder") {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = "move";
+          setIsDragOver(true);
+        }
+        onDragOver?.(e);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+        onDragLeave?.(e);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+        onDrop?.(e);
+      }}
       title={label}
     >
       <div className="folder-card__icon-wrapper">
@@ -103,6 +157,6 @@ export const FolderCard: React.FC<FolderCardProps> = ({
       </div>
 
       <span className="folder-card__label">{label}</span>
-    </button>
+    </div>
   );
 };

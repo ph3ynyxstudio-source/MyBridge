@@ -6,8 +6,9 @@ use tauri::{AppHandle, Manager};
 
 const INBOX_DIR_PATH: &str = r"C:\Ph3yNyx.OS\00-Dropbox";
 const PROJECTS_DIR_NAME: &str = "projects";
+const TRASH_DIR_NAME: &str = "trash";
 
-/// Élément présent dans la Boîte de dépôt (`C:\Ph3yNyx.OS\00-Dropbox`).
+/// Élément présent dans la Boîte de dépôt (`C:\Ph3yNyx.OS\00-Dropbox`) ou dans la Corbeille (`trash/`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InboxItem {
     pub nom: String,
@@ -27,8 +28,8 @@ pub struct ProjectFolder {
     pub enfants_optionnels: Option<Vec<ProjectFolder>>,
 }
 
-/// Résout et garantit l'existence de la Boîte de dépôt (`C:\Ph3yNyx.OS\00-Dropbox`)
-/// et du coffre des projets sous `app_data_dir/projects/`.
+/// Résout et garantit l'existence de la Boîte de dépôt (`C:\Ph3yNyx.OS\00-Dropbox`),
+/// du coffre des projets sous `app_data_dir/projects/` et de la corbeille sous `app_data_dir/trash/`.
 pub fn init_storage_dirs(app: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
     let base_dir = app
         .path()
@@ -37,6 +38,7 @@ pub fn init_storage_dirs(app: &AppHandle) -> Result<(PathBuf, PathBuf), String> 
 
     let inbox_dir = PathBuf::from(INBOX_DIR_PATH);
     let projects_dir = base_dir.join(PROJECTS_DIR_NAME);
+    let trash_dir = base_dir.join(TRASH_DIR_NAME);
 
     fs::create_dir_all(&inbox_dir).map_err(|e| {
         format!(
@@ -46,8 +48,24 @@ pub fn init_storage_dirs(app: &AppHandle) -> Result<(PathBuf, PathBuf), String> 
     })?;
     fs::create_dir_all(&projects_dir)
         .map_err(|e| format!("Impossible de créer le dossier projects/ : {}", e))?;
+    fs::create_dir_all(&trash_dir)
+        .map_err(|e| format!("Impossible de créer le dossier trash/ : {}", e))?;
 
     Ok((inbox_dir, projects_dir))
+}
+
+/// Renvoie le chemin absolu du dossier corbeille `app_data_dir/trash/`.
+pub fn get_trash_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let base_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Impossible de résoudre app_data_dir : {}", e))?;
+    let trash_dir = base_dir.join(TRASH_DIR_NAME);
+    if !trash_dir.exists() {
+        fs::create_dir_all(&trash_dir)
+            .map_err(|e| format!("Impossible de créer le dossier trash/ : {}", e))?;
+    }
+    Ok(trash_dir)
 }
 
 /// Vérifie qu'un identifiant simple (nom de fichier ou nom de projet) contient un unique segment valide
@@ -438,6 +456,300 @@ pub fn open_file_in_system(
         app.opener()
             .open_path(path_str, None::<&str>)
             .map_err(|e| format!("Impossible d'ouvrir le fichier : {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Déplace un élément d'un projet vers la corbeille (`app_data_dir/trash/`) avec horodatage.
+#[tauri::command]
+pub fn move_to_trash(
+    app: AppHandle,
+    project_name: String,
+    subpath: String,
+) -> Result<(), String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+    let trash_dir = get_trash_dir(&app)?;
+
+    let valid_project = validate_single_name(&project_name, "project_name")?;
+    let valid_subpath = validate_relative_subpath(Some(subpath))?;
+
+    if valid_subpath.as_os_str().is_empty() {
+        return Err("Le sous-chemin de l'élément à supprimer ne peut pas être vide.".to_string());
+    }
+
+    let src = projects_dir.join(&valid_project).join(&valid_subpath);
+    if !src.exists() {
+        return Err(format!("L'élément à supprimer n'existe pas : {:?}", src));
+    }
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let original_name = src
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_else(|| "element".to_string());
+
+    let trash_name = format!("{}_{}", timestamp, original_name);
+    let dest = trash_dir.join(trash_name);
+
+    move_entry_safely(&src, &dest)?;
+
+    Ok(())
+}
+
+/// Copie récursivement un élément (fichier ou dossier) vers un autre projet/dossier.
+#[tauri::command]
+pub fn copy_item(
+    app: AppHandle,
+    src_project: String,
+    src_subpath: String,
+    dest_project: String,
+    dest_subpath: Option<String>,
+) -> Result<(), String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+
+    let valid_src_proj = validate_single_name(&src_project, "src_project")?;
+    let valid_src_sub = validate_relative_subpath(Some(src_subpath))?;
+
+    let valid_dest_proj = validate_single_name(&dest_project, "dest_project")?;
+    let valid_dest_sub = validate_relative_subpath(dest_subpath)?;
+
+    let source_path = projects_dir.join(&valid_src_proj).join(&valid_src_sub);
+    if !source_path.exists() {
+        return Err(format!("L'élément source n'existe pas : {:?}", source_path));
+    }
+
+    // Détermination de destination_path (si dest_subpath se termine par un nom ou est un dossier)
+    let destination_path = if valid_dest_sub.as_os_str().is_empty() {
+        let file_name = source_path
+            .file_name()
+            .ok_or_else(|| "Nom de fichier source invalide".to_string())?;
+        projects_dir.join(&valid_dest_proj).join(file_name)
+    } else {
+        let candidate = projects_dir.join(&valid_dest_proj).join(&valid_dest_sub);
+        if candidate.is_dir() {
+            let file_name = source_path
+                .file_name()
+                .ok_or_else(|| "Nom de fichier source invalide".to_string())?;
+            candidate.join(file_name)
+        } else {
+            candidate
+        }
+    };
+
+    // Trouver le VRAI dossier parent et faire fs::create_dir_all UNIQUEMENT sur ce parent
+    if let Some(parent) = destination_path.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Impossible de créer le dossier parent : {}", e))?;
+        }
+    }
+
+    // Gestion des doublons pour la copie
+    let mut final_dest_path = destination_path;
+    if final_dest_path.exists() {
+        let parent = final_dest_path
+            .parent()
+            .ok_or_else(|| "Dossier parent introuvable".to_string())?;
+        let file_name = final_dest_path
+            .file_name()
+            .ok_or_else(|| "Nom de destination invalide".to_string())?
+            .to_string_lossy()
+            .to_string();
+        let stem = Path::new(&file_name)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "copie".to_string());
+        let ext = Path::new(&file_name)
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_default();
+
+        let mut counter = 1;
+        loop {
+            let candidate_name = if counter == 1 {
+                format!("{} - Copie{}", stem, ext)
+            } else {
+                format!("{} - Copie ({}){}", stem, counter, ext)
+            };
+            let candidate_path = parent.join(&candidate_name);
+            if !candidate_path.exists() {
+                final_dest_path = candidate_path;
+                break;
+            }
+            counter += 1;
+        }
+    }
+
+    // Assure-toi de vérifier source_path.is_file() avant de copier
+    if source_path.is_file() {
+        fs::copy(&source_path, &final_dest_path)
+            .map_err(|e| format!("Erreur lors de la copie du fichier : {}", e))?;
+    } else if source_path.is_dir() {
+        copy_dir_recursive(&source_path, &final_dest_path)
+            .map_err(|e| format!("Erreur lors de la copie du dossier : {}", e))?;
+    } else {
+        return Err("L'élément source n'est ni un fichier ni un dossier valide.".to_string());
+    }
+
+    Ok(())
+}
+
+/// Déplace un élément (fichier ou dossier) vers un autre projet/dossier.
+#[tauri::command]
+pub fn move_item(
+    app: AppHandle,
+    src_project: String,
+    src_subpath: String,
+    dest_project: String,
+    dest_subpath: Option<String>,
+) -> Result<(), String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+
+    let valid_src_proj = validate_single_name(&src_project, "src_project")?;
+    let valid_src_sub = validate_relative_subpath(Some(src_subpath))?;
+
+    let valid_dest_proj = validate_single_name(&dest_project, "dest_project")?;
+    let valid_dest_sub = validate_relative_subpath(dest_subpath)?;
+
+    let source_path = projects_dir.join(&valid_src_proj).join(&valid_src_sub);
+    if !source_path.exists() {
+        return Err(format!("L'élément source n'existe pas : {:?}", source_path));
+    }
+
+    let destination_path = if valid_dest_sub.as_os_str().is_empty() {
+        let file_name = source_path
+            .file_name()
+            .ok_or_else(|| "Nom de fichier source invalide".to_string())?;
+        projects_dir.join(&valid_dest_proj).join(file_name)
+    } else {
+        let candidate = projects_dir.join(&valid_dest_proj).join(&valid_dest_sub);
+        if candidate.is_dir() {
+            let file_name = source_path
+                .file_name()
+                .ok_or_else(|| "Nom de fichier source invalide".to_string())?;
+            candidate.join(file_name)
+        } else {
+            candidate
+        }
+    };
+
+    if destination_path == source_path {
+        return Ok(());
+    }
+
+    if source_path.is_dir() && destination_path.starts_with(&source_path) {
+        return Err("Impossible de déplacer un dossier à l'intérieur de lui-même.".to_string());
+    }
+
+    // Utiliser destination_path.parent() pour trouver le VRAI dossier parent et faire fs::create_dir_all UNIQUEMENT sur ce parent
+    if let Some(parent) = destination_path.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Impossible de créer le dossier parent : {}", e))?;
+        }
+    }
+
+    let mut final_dest_path = destination_path;
+    if final_dest_path.exists() {
+        let parent = final_dest_path
+            .parent()
+            .ok_or_else(|| "Dossier parent introuvable".to_string())?;
+        let file_name = final_dest_path
+            .file_name()
+            .ok_or_else(|| "Nom de destination invalide".to_string())?
+            .to_string_lossy()
+            .to_string();
+        let stem = Path::new(&file_name)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "element".to_string());
+        let ext = Path::new(&file_name)
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_default();
+
+        let mut counter = 1;
+        loop {
+            let candidate_name = format!("{} ({}){}", stem, counter, ext);
+            let candidate_path = parent.join(&candidate_name);
+            if !candidate_path.exists() {
+                final_dest_path = candidate_path;
+                break;
+            }
+            counter += 1;
+        }
+    }
+
+    move_entry_safely(&source_path, &final_dest_path)?;
+
+    Ok(())
+}
+
+/// Parcourt le dossier de corbeille (`trash/`) et renvoie la liste des éléments supprimés.
+#[tauri::command]
+pub fn get_trash_items(app: AppHandle) -> Result<Vec<InboxItem>, String> {
+    let trash_dir = get_trash_dir(&app)?;
+    let read_dir = fs::read_dir(&trash_dir)
+        .map_err(|e| format!("Erreur lors de la lecture de la corbeille : {}", e))?;
+
+    let mut items = Vec::new();
+
+    for entry_res in read_dir {
+        let entry = entry_res.map_err(|e| format!("Entrée corbeille illisible : {}", e))?;
+        let metadata = entry
+            .metadata()
+            .map_err(|e| format!("Métadonnées corbeille illisibles : {}", e))?;
+
+        let nom = entry.file_name().to_string_lossy().to_string();
+        let est_dossier = metadata.is_dir();
+        let taille = if est_dossier { 0 } else { metadata.len() };
+        let extension = if est_dossier {
+            None
+        } else {
+            entry
+                .path()
+                .extension()
+                .map(|ext| ext.to_string_lossy().to_string())
+        };
+
+        let date_modification = extract_modified_timestamp(&metadata);
+
+        items.push(InboxItem {
+            nom,
+            taille,
+            extension,
+            date_modification,
+            est_dossier,
+        });
+    }
+
+    items.sort_by(|a, b| b.date_modification.cmp(&a.date_modification));
+
+    Ok(items)
+}
+
+/// Supprime définitivement tout le contenu présent dans le dossier corbeille (`trash/`).
+#[tauri::command]
+pub fn empty_trash(app: AppHandle) -> Result<(), String> {
+    let trash_dir = get_trash_dir(&app)?;
+    let read_dir = fs::read_dir(&trash_dir)
+        .map_err(|e| format!("Erreur lors de la lecture de la corbeille : {}", e))?;
+
+    for entry_res in read_dir {
+        let entry = entry_res.map_err(|e| format!("Entrée corbeille illisible : {}", e))?;
+        let path = entry.path();
+        if path.is_dir() {
+            fs::remove_dir_all(&path)
+                .map_err(|e| format!("Erreur lors de la suppression définitive du dossier {:?} : {}", path, e))?;
+        } else {
+            fs::remove_file(&path)
+                .map_err(|e| format!("Erreur lors de la suppression définitive du fichier {:?} : {}", path, e))?;
+        }
     }
 
     Ok(())

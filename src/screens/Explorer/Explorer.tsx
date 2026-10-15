@@ -1,11 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { TileKind } from "../../components/FolderCard/FolderCard";
 import {
+  copyItem,
   createProject,
+  emptyTrash,
   getInboxItems,
+  getTrashItems,
   InboxItem,
   listProjects,
   moveInboxItem,
+  moveItem,
+  moveToTrash,
   openFileInSystem,
   ProjectFolder,
   readProjectContents,
@@ -20,6 +25,8 @@ import {
   MAX_SHORTCUTS,
 } from "./components/ShortcutsPanel/ShortcutsPanel";
 import { EcosystemSidebar } from "./components/EcosystemSidebar/EcosystemSidebar";
+import { ContextMenu } from "./components/ContextMenu/ContextMenu";
+import { TrashDrawer } from "./components/TrashDrawer/TrashDrawer";
 import "./Explorer.css";
 
 const IMAGE_EXTENSIONS = new Set([
@@ -54,6 +61,21 @@ function toGridEntry(folder: ProjectFolder): GridEntry {
   };
 }
 
+interface VirtualClipboard {
+  op: "copy" | "cut";
+  project: string;
+  subpath: string;
+  entry: GridEntry;
+}
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  targetEntry?: GridEntry;
+  targetProject: string;
+  targetSubpath?: string;
+}
+
 const PINNED_STORAGE_KEY = "mybridge_pinned_projects";
 
 export const Explorer: React.FC = () => {
@@ -73,6 +95,16 @@ export const Explorer: React.FC = () => {
     return [];
   });
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
+
+  // Presse-papier virtuel pour Copier / Couper / Coller
+  const [clipboard, setClipboard] = useState<VirtualClipboard | null>(null);
+
+  // Menu contextuel (clic droit)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  // Corbeille locale sécurisée
+  const [trashItems, setTrashItems] = useState<InboxItem[]>([]);
+  const [isTrashDrawerOpen, setIsTrashDrawerOpen] = useState<boolean>(false);
 
   const [projectSubfoldersMap, setProjectSubfoldersMap] = useState<
     Record<string, string[]>
@@ -120,6 +152,18 @@ export const Explorer: React.FC = () => {
       setInboxItems(items);
     } catch (err) {
       console.error("Erreur lors du chargement de l'Inbox :", err);
+    }
+  }, []);
+
+  /**
+   * Charge les éléments présents dans la Corbeille (`trash/`).
+   */
+  const refreshTrash = useCallback(async () => {
+    try {
+      const items = await getTrashItems();
+      setTrashItems(items);
+    } catch (err) {
+      console.error("Erreur lors du chargement de la Corbeille :", err);
     }
   }, []);
 
@@ -293,7 +337,8 @@ export const Explorer: React.FC = () => {
   useEffect(() => {
     void refreshInbox();
     void refreshProjects();
-  }, [refreshInbox, refreshProjects]);
+    void refreshTrash();
+  }, [refreshInbox, refreshProjects, refreshTrash]);
 
   /**
    * Construction des noeuds de l'arbre latéral gauche (`TreePanel`).
@@ -601,6 +646,241 @@ export const Explorer: React.FC = () => {
     });
   };
 
+  /**
+   * Ouverture du menu contextuel sur une tuile (carte de fichier ou dossier).
+   */
+  const handleOpenCardContextMenu = (
+    e: React.MouseEvent,
+    entry: GridEntry,
+    project: string,
+    subpath?: string
+  ) => {
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      targetEntry: entry,
+      targetProject: project,
+      targetSubpath: subpath,
+    });
+  };
+
+  /**
+   * Ouverture du menu contextuel sur le fond de la grille.
+   */
+  const handleOpenGridContextMenu = (
+    e: React.MouseEvent,
+    project: string,
+    subpath?: string
+  ) => {
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      targetProject: project,
+      targetSubpath: subpath,
+    });
+  };
+
+  /**
+   * Copier l'élément ciblé vers le presse-papier virtuel.
+   */
+  const handleCopy = () => {
+    if (!contextMenu?.targetEntry) return;
+    setClipboard({
+      op: "copy",
+      project: contextMenu.targetProject,
+      subpath: contextMenu.targetEntry.id,
+      entry: contextMenu.targetEntry,
+    });
+  };
+
+  /**
+   * Couper l'élément ciblé vers le presse-papier virtuel.
+   */
+  const handleCut = () => {
+    if (!contextMenu?.targetEntry) return;
+    setClipboard({
+      op: "cut",
+      project: contextMenu.targetProject,
+      subpath: contextMenu.targetEntry.id,
+      entry: contextMenu.targetEntry,
+    });
+  };
+
+  /**
+   * Coller l'élément du presse-papier virtuel dans le projet / sous-dossier actuel.
+   */
+  const handlePaste = async () => {
+    if (!clipboard || !contextMenu) return;
+    const destProject = contextMenu.targetProject;
+    // On transmet le chemin complet incluant le nom de l'élément
+    const destSubpath = contextMenu.targetSubpath
+      ? `${contextMenu.targetSubpath}/${clipboard.entry.label}`
+      : clipboard.entry.label;
+
+    try {
+      if (clipboard.op === "copy") {
+        await copyItem(
+          clipboard.project,
+          clipboard.subpath,
+          destProject,
+          destSubpath
+        );
+      } else if (clipboard.op === "cut") {
+        await moveItem(
+          clipboard.project,
+          clipboard.subpath,
+          destProject,
+          destSubpath
+        );
+        setClipboard(null);
+      }
+      await loadProjectFolder(activeProject, currentSubpath);
+      if (isSplitViewActive && secondaryProject) {
+        await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+      }
+    } catch (err) {
+      console.error("Erreur lors du collage :", err);
+    }
+  };
+
+  /**
+   * Déplacement sécurisé vers la corbeille.
+   */
+  const handleDeleteToTrash = async (
+    targetEntry?: GridEntry,
+    targetProject?: string
+  ) => {
+    const entry = targetEntry || contextMenu?.targetEntry;
+    const proj = targetProject || contextMenu?.targetProject || activeProject;
+    if (!entry || !proj) return;
+
+    try {
+      await moveToTrash(proj, entry.id);
+      await refreshTrash();
+      await loadProjectFolder(activeProject, currentSubpath);
+      if (isSplitViewActive && secondaryProject) {
+        await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+      }
+    } catch (err) {
+      console.error("Erreur déplacement vers la corbeille :", err);
+    }
+  };
+
+  /**
+   * Vidage définitif de la corbeille (après confirmation explicite utilisateur).
+   */
+  const handleEmptyTrash = async () => {
+    try {
+      await emptyTrash();
+      await refreshTrash();
+    } catch (err) {
+      console.error("Erreur vidage de la corbeille :", err);
+    }
+  };
+
+  /**
+   * Début du glisser-déposer d'un fichier ou sous-dossier.
+   */
+  const handleDragStart = (
+    e: React.DragEvent,
+    entry: GridEntry,
+    project: string
+  ) => {
+    const payload = JSON.stringify({
+      project,
+      subpath: entry.id,
+      isFolder: entry.isFolder,
+      label: entry.label,
+    });
+    e.dataTransfer.setData("application/json", payload);
+    e.dataTransfer.setData("text/plain", payload);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  /**
+   * Dépôt d'un élément sur une tuile dossier.
+   */
+  const handleDropOnFolder = async (
+    e: React.DragEvent,
+    targetFolderEntry: GridEntry,
+    targetProject: string
+  ) => {
+    e.preventDefault();
+    const raw =
+      e.dataTransfer.getData("application/json") ||
+      e.dataTransfer.getData("text/plain");
+    if (!raw) return;
+    try {
+      const data = JSON.parse(raw);
+      if (data.project === targetProject && data.subpath === targetFolderEntry.id) {
+        return;
+      }
+      // targetFolderEntry.id est le dossier cible, on y ajoute le nom de l'élément
+      const destSubpath = `${targetFolderEntry.id}/${data.label}`;
+      await moveItem(data.project, data.subpath, targetProject, destSubpath);
+      await loadProjectFolder(activeProject, currentSubpath);
+      if (isSplitViewActive && secondaryProject) {
+        await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+      }
+    } catch (err) {
+      console.error("Erreur glisser-déposer sur dossier :", err);
+    }
+  };
+
+  /**
+   * Dépôt d'un élément sur un segment du fil d'Ariane (Breadcrumb).
+   */
+  const handleDropOnBreadcrumb = async (
+    e: React.DragEvent,
+    targetSubpath: string | undefined,
+    targetProject: string
+  ) => {
+    e.preventDefault();
+    const raw =
+      e.dataTransfer.getData("application/json") ||
+      e.dataTransfer.getData("text/plain");
+    if (!raw) return;
+    try {
+      const data = JSON.parse(raw);
+      // targetSubpath est le sous-chemin du dossier parent (ou undefined pour la racine du projet)
+      const destSubpath = targetSubpath
+        ? `${targetSubpath}/${data.label}`
+        : data.label;
+      if (data.project === targetProject && data.subpath === destSubpath) {
+        return;
+      }
+      await moveItem(data.project, data.subpath, targetProject, destSubpath);
+      await loadProjectFolder(activeProject, currentSubpath);
+      if (isSplitViewActive && secondaryProject) {
+        await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+      }
+    } catch (err) {
+      console.error("Erreur glisser-déposer sur fil d'Ariane :", err);
+    }
+  };
+
+  /**
+   * Dépôt direct d'un élément dans la corbeille (barre latérale droite).
+   */
+  const handleDropOnTrash = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const raw =
+      e.dataTransfer.getData("application/json") ||
+      e.dataTransfer.getData("text/plain");
+    if (!raw) return;
+    try {
+      const data = JSON.parse(raw);
+      await moveToTrash(data.project, data.subpath);
+      await refreshTrash();
+      await loadProjectFolder(activeProject, currentSubpath);
+      if (isSplitViewActive && secondaryProject) {
+        await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+      }
+    } catch (err) {
+      console.error("Erreur glisser-déposer vers la corbeille :", err);
+    }
+  };
+
   return (
     <div className="explorer-screen">
       <Topbar
@@ -657,6 +937,19 @@ export const Explorer: React.FC = () => {
           onOpenFolderEntry={handleOpenFolderEntry}
           onOpenFileEntry={handleOpenFileEntry}
           onAddFolderOrFiles={() => setIsInboxDrawerOpen(true)}
+          onContextMenuCard={(e, entry) =>
+            handleOpenCardContextMenu(e, entry, activeProject, currentSubpath)
+          }
+          onContextMenuGrid={(e) =>
+            handleOpenGridContextMenu(e, activeProject, currentSubpath)
+          }
+          onDragStart={(e, entry) => handleDragStart(e, entry, activeProject)}
+          onDropOnFolder={(e, target) =>
+            handleDropOnFolder(e, target, activeProject)
+          }
+          onDropOnBreadcrumb={(e, targetSubpath) =>
+            handleDropOnBreadcrumb(e, targetSubpath, activeProject)
+          }
           isSplitViewActive={isSplitViewActive}
           projects={projects}
           secondaryProject={secondaryProject}
@@ -669,11 +962,29 @@ export const Explorer: React.FC = () => {
           onSelectSecondaryEntry={(entry) => setSelectedSecondaryEntryId(entry.id)}
           onOpenSecondaryFolderEntry={handleOpenSecondaryFolderEntry}
           onOpenSecondaryFileEntry={handleOpenSecondaryFileEntry}
+          onContextMenuSecondaryCard={(e, entry) =>
+            handleOpenCardContextMenu(e, entry, secondaryProject, secondarySubpath)
+          }
+          onContextMenuSecondaryGrid={(e) =>
+            handleOpenGridContextMenu(e, secondaryProject, secondarySubpath)
+          }
+          onSecondaryDragStart={(e, entry) =>
+            handleDragStart(e, entry, secondaryProject)
+          }
+          onSecondaryDropOnFolder={(e, target) =>
+            handleDropOnFolder(e, target, secondaryProject)
+          }
+          onDropOnSecondaryBreadcrumb={(e, targetSubpath) =>
+            handleDropOnBreadcrumb(e, targetSubpath, secondaryProject)
+          }
         />
 
         <EcosystemSidebar
           isOpen={isRightSidebarOpen}
           onToggle={() => setIsRightSidebarOpen((prev) => !prev)}
+          trashCount={trashItems.length}
+          onOpenTrash={() => setIsTrashDrawerOpen(true)}
+          onDropToTrash={handleDropOnTrash}
         />
       </main>
 
@@ -686,6 +997,31 @@ export const Explorer: React.FC = () => {
         onClose={() => setIsInboxDrawerOpen(false)}
         onRefreshInbox={refreshInbox}
         onMoveItem={handleMoveInboxItem}
+      />
+
+      {/* Menu contextuel au clic droit */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          targetEntry={contextMenu.targetEntry}
+          hasClipboard={Boolean(clipboard)}
+          onCopy={handleCopy}
+          onCut={handleCut}
+          onPaste={() => void handlePaste()}
+          onDelete={() => void handleDeleteToTrash()}
+          onRefresh={handleRefreshAll}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* Volet Corbeille sécurisé avec confirmation explicite */}
+      <TrashDrawer
+        isOpen={isTrashDrawerOpen}
+        items={trashItems}
+        onClose={() => setIsTrashDrawerOpen(false)}
+        onRefreshTrash={refreshTrash}
+        onEmptyTrash={handleEmptyTrash}
       />
     </div>
   );

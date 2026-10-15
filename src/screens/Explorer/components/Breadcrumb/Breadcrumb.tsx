@@ -5,6 +5,7 @@ export interface BreadcrumbProps {
   projectName: string;
   subpath?: string;
   onNavigate: (targetSubpath?: string) => void;
+  onDropOnSegment?: (e: React.DragEvent, targetSubpath?: string) => void;
 }
 
 interface BreadcrumbSegment {
@@ -17,7 +18,10 @@ export const Breadcrumb: React.FC<BreadcrumbProps> = ({
   projectName,
   subpath,
   onNavigate,
+  onDropOnSegment,
 }) => {
+  const [dragOverKey, setDragOverKey] = React.useState<string | null>(null);
+
   const segments: BreadcrumbSegment[] = useMemo(() => {
     if (!projectName) return [];
 
@@ -52,59 +56,87 @@ export const Breadcrumb: React.FC<BreadcrumbProps> = ({
   return (
     <nav className="breadcrumb" aria-label="Fil d'Ariane de navigation">
       <div className="breadcrumb__list">
-        {segments.map((seg, index) => (
-          <React.Fragment key={seg.subpath ?? "__root__"}>
-            {index > 0 && (
-              <span className="breadcrumb__separator" aria-hidden="true">
-                <svg
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+        {segments.map((seg, index) => {
+          const segKey = seg.subpath ?? "__root__";
+          const isDragOver = dragOverKey === segKey;
+
+          return (
+            <React.Fragment key={segKey}>
+              {index > 0 && (
+                <span className="breadcrumb__separator" aria-hidden="true">
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M6 3l5 5-5 5" />
+                  </svg>
+                </span>
+              )}
+              {seg.isCurrent ? (
+                <span
+                  className="breadcrumb__item breadcrumb__item--current"
+                  aria-current="page"
                 >
-                  <path d="M6 3l5 5-5 5" />
-                </svg>
-              </span>
-            )}
-            {seg.isCurrent ? (
-              <span
-                className="breadcrumb__item breadcrumb__item--current"
-                aria-current="page"
-              >
-                {index === 0 && (
-                  <svg
-                    className="breadcrumb__icon"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                  </svg>
-                )}
-                <span className="breadcrumb__label">{seg.label}</span>
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="breadcrumb__item breadcrumb__item--btn"
-                onClick={() => onNavigate(seg.subpath)}
-                title={`Revenir à ${seg.label}`}
-              >
-                {index === 0 && (
-                  <svg
-                    className="breadcrumb__icon"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                  </svg>
-                )}
-                <span className="breadcrumb__label">{seg.label}</span>
-              </button>
-            )}
-          </React.Fragment>
-        ))}
+                  {index === 0 && (
+                    <svg
+                      className="breadcrumb__icon"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                    </svg>
+                  )}
+                  <span className="breadcrumb__label">{seg.label}</span>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className={`breadcrumb__item breadcrumb__item--btn ${
+                    isDragOver ? "breadcrumb__item--drag-over" : ""
+                  }`}
+                  onClick={() => onNavigate(seg.subpath)}
+                  onDragOver={(e) => {
+                    if (onDropOnSegment) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = "move";
+                      setDragOverKey(segKey);
+                    }
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragOverKey(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragOverKey(null);
+                    if (onDropOnSegment) {
+                      onDropOnSegment(e, seg.subpath);
+                    }
+                  }}
+                  title={`Revenir à ${seg.label}`}
+                >
+                  {index === 0 && (
+                    <svg
+                      className="breadcrumb__icon"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                    </svg>
+                  )}
+                  <span className="breadcrumb__label">{seg.label}</span>
+                </button>
+              )}
+            </React.Fragment>
+          );
+        })}
       </div>
     </nav>
   );

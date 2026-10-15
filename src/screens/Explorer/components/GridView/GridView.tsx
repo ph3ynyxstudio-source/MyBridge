@@ -23,6 +23,13 @@ export interface GridViewProps {
   onOpenFileEntry?: (entry: GridEntry) => void;
   onAddFolderOrFiles: () => void;
 
+  // Clic droit & Glisser-déposer
+  onContextMenuCard?: (e: React.MouseEvent, entry: GridEntry) => void;
+  onContextMenuGrid?: (e: React.MouseEvent) => void;
+  onDragStart?: (e: React.DragEvent, entry: GridEntry) => void;
+  onDropOnFolder?: (e: React.DragEvent, targetFolderEntry: GridEntry) => void;
+  onDropOnBreadcrumb?: (e: React.DragEvent, targetSubpath?: string) => void;
+
   // Split-View (Double affichage 2 projets distincts)
   isSplitViewActive: boolean;
   projects: string[];
@@ -36,6 +43,11 @@ export interface GridViewProps {
   onSelectSecondaryEntry?: (entry: GridEntry) => void;
   onOpenSecondaryFolderEntry?: (entry: GridEntry) => void;
   onOpenSecondaryFileEntry?: (entry: GridEntry) => void;
+  onContextMenuSecondaryCard?: (e: React.MouseEvent, entry: GridEntry) => void;
+  onContextMenuSecondaryGrid?: (e: React.MouseEvent) => void;
+  onSecondaryDragStart?: (e: React.DragEvent, entry: GridEntry) => void;
+  onSecondaryDropOnFolder?: (e: React.DragEvent, targetFolderEntry: GridEntry) => void;
+  onDropOnSecondaryBreadcrumb?: (e: React.DragEvent, targetSubpath?: string) => void;
 }
 
 export const GridView: React.FC<GridViewProps> = ({
@@ -49,6 +61,11 @@ export const GridView: React.FC<GridViewProps> = ({
   onOpenFolderEntry,
   onOpenFileEntry,
   onAddFolderOrFiles,
+  onContextMenuCard,
+  onContextMenuGrid,
+  onDragStart,
+  onDropOnFolder,
+  onDropOnBreadcrumb,
   isSplitViewActive,
   projects,
   secondaryProject,
@@ -61,11 +78,24 @@ export const GridView: React.FC<GridViewProps> = ({
   onSelectSecondaryEntry,
   onOpenSecondaryFolderEntry,
   onOpenSecondaryFileEntry,
+  onContextMenuSecondaryCard,
+  onContextMenuSecondaryGrid,
+  onSecondaryDragStart,
+  onSecondaryDropOnFolder,
+  onDropOnSecondaryBreadcrumb,
 }) => {
   return (
     <section className={`grid-view ${isSplitViewActive ? "grid-view--split-active" : ""}`}>
       {/* PANNEAU PRINCIPAL (PROJET 1) */}
-      <div className={`grid-view__primary ${isSplitViewActive ? "grid-view__primary--split" : ""}`}>
+      <div
+        className={`grid-view__primary ${isSplitViewActive ? "grid-view__primary--split" : ""}`}
+        onContextMenu={(e) => {
+          if (onContextMenuGrid) {
+            e.preventDefault();
+            onContextMenuGrid(e);
+          }
+        }}
+      >
         {!hasActiveProject ? (
           <div className="grid-view__empty-card">
             <h3 className="grid-view__empty-title">
@@ -85,6 +115,7 @@ export const GridView: React.FC<GridViewProps> = ({
                 onNavigate={(target) => {
                   if (onNavigateBreadcrumb) onNavigateBreadcrumb(target);
                 }}
+                onDropOnSegment={onDropOnBreadcrumb}
               />
             )}
 
@@ -114,6 +145,14 @@ export const GridView: React.FC<GridViewProps> = ({
                       if (onOpenFileEntry) onOpenFileEntry(entry);
                     }
                   }}
+                  draggable={true}
+                  onDragStart={(e) => onDragStart?.(e, entry)}
+                  onDrop={(e) => {
+                    if (entry.isFolder && onDropOnFolder) {
+                      onDropOnFolder(e, entry);
+                    }
+                  }}
+                  onContextMenu={(e) => onContextMenuCard?.(e, entry)}
                 />
               ))}
 
@@ -130,7 +169,18 @@ export const GridView: React.FC<GridViewProps> = ({
 
       {/* SECOND PANNEAU (SPLIT-VIEW : PROJET 2 DISTINCT) */}
       {isSplitViewActive && (
-        <aside className="grid-view__secondary">
+        <aside
+          className="grid-view__secondary"
+          onContextMenu={(e) => {
+            if (onContextMenuSecondaryGrid) {
+              e.preventDefault();
+              onContextMenuSecondaryGrid(e);
+            } else if (onContextMenuGrid) {
+              e.preventDefault();
+              onContextMenuGrid(e);
+            }
+          }}
+        >
           {/* En-tête du second projet */}
           <div className="grid-view__secondary-header">
             <div className="grid-view__secondary-title-group">
@@ -177,6 +227,7 @@ export const GridView: React.FC<GridViewProps> = ({
                   onResetSecondarySubpath();
                 }
               }}
+              onDropOnSegment={onDropOnSecondaryBreadcrumb}
             />
           )}
 
@@ -199,6 +250,30 @@ export const GridView: React.FC<GridViewProps> = ({
                       if (onOpenSecondaryFolderEntry) onOpenSecondaryFolderEntry(sub);
                     } else {
                       if (onOpenSecondaryFileEntry) onOpenSecondaryFileEntry(sub);
+                    }
+                  }}
+                  draggable={true}
+                  onDragStart={(e) => {
+                    if (onSecondaryDragStart) {
+                      onSecondaryDragStart(e, sub);
+                    } else {
+                      onDragStart?.(e, sub);
+                    }
+                  }}
+                  onDrop={(e) => {
+                    if (sub.isFolder) {
+                      if (onSecondaryDropOnFolder) {
+                        onSecondaryDropOnFolder(e, sub);
+                      } else if (onDropOnFolder) {
+                        onDropOnFolder(e, sub);
+                      }
+                    }
+                  }}
+                  onContextMenu={(e) => {
+                    if (onContextMenuSecondaryCard) {
+                      onContextMenuSecondaryCard(e, sub);
+                    } else {
+                      onContextMenuCard?.(e, sub);
                     }
                   }}
                 />

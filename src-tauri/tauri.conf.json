@@ -14,7 +14,8 @@
       {
         "title": "MyBr|dge",
         "width": 1440,
-        "height": 860
+        "height": 860,
+        "dragDropEnabled": false
       }
     ],
     "security": {

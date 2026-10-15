@@ -29,6 +29,10 @@
   transition: all 0.14s ease;
 }
 
+.breadcrumb__item * {
+  pointer-events: none;
+}
+
 .breadcrumb__item--btn {
   color: var(--text-secondary);
   background: transparent;
@@ -40,6 +44,14 @@
   color: var(--accent-blue);
   background-color: var(--accent-blue-muted);
   border-color: var(--accent-blue-border);
+}
+
+.breadcrumb__item--drag-over {
+  color: var(--accent-blue) !important;
+  background-color: var(--accent-blue-muted) !important;
+  border-color: var(--accent-blue) !important;
+  box-shadow: 0 0 14px rgba(84, 214, 255, 0.45) !important;
+  transform: scale(1.05);
 }
 
 .breadcrumb__item--current {
