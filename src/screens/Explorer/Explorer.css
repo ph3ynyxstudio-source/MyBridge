@@ -19,6 +19,43 @@
   overflow: hidden;
 }
 
+.explorer-screen--external-drag {
+  outline: 2px dashed var(--accent-blue);
+  outline-offset: -2px;
+}
+
+.explorer-screen__drop-overlay {
+  position: fixed;
+  inset: var(--topbar-height) 0 0 0;
+  background-color: var(--overlay-bg);
+  backdrop-filter: blur(8px);
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+  animation: projectModalFadeIn 0.16s ease-out;
+}
+
+.explorer-screen__drop-icon {
+  width: 52px;
+  height: 52px;
+  color: var(--accent-blue);
+}
+
+.explorer-screen__drop-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.explorer-screen__drop-subtext {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 /* =========================================================
    MODALES DE PROJET (SUPPRESSION & RENOMMAGE)
    ========================================================= */

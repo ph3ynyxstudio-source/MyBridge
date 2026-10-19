@@ -198,3 +198,63 @@ export async function readFileText(
 ): Promise<string> {
   return invoke<string>("read_file_text", { projectName, subpath });
 }
+
+/**
+ * Sauvegarde le contenu texte dans un fichier (.md, .txt, etc.).
+ */
+export async function writeTextFile(
+  projectName: string,
+  subpath: string,
+  content: string
+): Promise<void> {
+  return invoke<void>("write_text_file", {
+    projectName,
+    subpath,
+    content,
+  });
+}
+
+/**
+ * Récupère les métadonnées réelles (taille en octets, date de modification) d'un fichier sur disque.
+ */
+export async function getFileMetadata(
+  projectName: string,
+  subpath: string
+): Promise<{ size: number; modified: number }> {
+  return invoke<{ size: number; modified: number }>("get_file_metadata", {
+    projectName,
+    subpath,
+  });
+}
+
+/**
+ * Importe un fichier ou dossier externe depuis un chemin natif Windows vers inbox/ ou un projet.
+ */
+export async function importExternalPath(
+  sourcePath: string,
+  targetProject?: string,
+  targetSubpath?: string
+): Promise<string> {
+  return invoke<string>("import_external_path", {
+    sourcePath,
+    targetProject: targetProject || null,
+    targetSubpath: targetSubpath || null,
+  });
+}
+
+/**
+ * Écrit les octets d'un fichier déposé via le navigateur/DOM vers inbox/ ou un projet.
+ */
+export async function saveFileBytes(
+  fileName: string,
+  bytes: number[],
+  targetProject?: string,
+  targetSubpath?: string
+): Promise<string> {
+  return invoke<string>("save_file_bytes", {
+    fileName,
+    bytes,
+    targetProject: targetProject || null,
+    targetSubpath: targetSubpath || null,
+  });
+}

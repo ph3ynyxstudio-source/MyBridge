@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { InboxItem } from "../../../../services/storageService";
 import "./InboxDrawer.css";
+
+export type InboxSortOption = "date-desc" | "date-asc" | "name-asc" | "name-desc";
+export type InboxFilterType = "all" | "images" | "texts" | "folders";
 
 export interface InboxDrawerProps {
   isOpen: boolean;
@@ -93,6 +96,10 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Filtrage et Tri dans la Boîte de dépôt
+  const [sortOption, setSortOption] = useState<InboxSortOption>("date-desc");
+  const [filterType, setFilterType] = useState<InboxFilterType>("all");
+
   // Création de nouveau projet inline dans la grille des drop zones
   const [isCreatingProject, setIsCreatingProject] = useState<boolean>(false);
   const [newProjectInput, setNewProjectInput] = useState<string>("");
@@ -133,13 +140,88 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
     });
   }, []);
 
-  const toggleSelectAll = useCallback(() => {
-    if (selectedItems.size === items.length) {
-      setSelectedItems(new Set());
-    } else {
-      setSelectedItems(new Set(items.map((i) => i.nom)));
+  const IMAGE_EXTS = useMemo(
+    () => new Set(["png", "jpg", "jpeg", "webp", "svg", "gif", "bmp", "ico"]),
+    []
+  );
+  const TEXT_EXTS = useMemo(
+    () =>
+      new Set([
+        "txt",
+        "md",
+        "log",
+        "json",
+        "toml",
+        "yaml",
+        "yml",
+        "rs",
+        "ts",
+        "tsx",
+        "js",
+        "jsx",
+        "css",
+        "html",
+        "pdf",
+      ]),
+    []
+  );
+
+  const processedItems = useMemo(() => {
+    let list = [...items];
+
+    if (filterType === "images") {
+      list = list.filter(
+        (i) => !i.est_dossier && i.extension && IMAGE_EXTS.has(i.extension.toLowerCase())
+      );
+    } else if (filterType === "texts") {
+      list = list.filter(
+        (i) => !i.est_dossier && i.extension && TEXT_EXTS.has(i.extension.toLowerCase())
+      );
+    } else if (filterType === "folders") {
+      list = list.filter((i) => i.est_dossier);
     }
-  }, [items, selectedItems.size]);
+
+    list.sort((a, b) => {
+      switch (sortOption) {
+        case "date-desc":
+          return (b.date_modification || 0) - (a.date_modification || 0);
+        case "date-asc":
+          return (a.date_modification || 0) - (b.date_modification || 0);
+        case "name-asc":
+          return a.nom.localeCompare(b.nom, undefined, { numeric: true, sensitivity: "base" });
+        case "name-desc":
+          return b.nom.localeCompare(a.nom, undefined, { numeric: true, sensitivity: "base" });
+        default:
+          return 0;
+      }
+    });
+
+    return list;
+  }, [items, filterType, sortOption, IMAGE_EXTS, TEXT_EXTS]);
+
+  const isAllSelected =
+    processedItems.length > 0 &&
+    processedItems.every((i) => selectedItems.has(i.nom));
+
+  const toggleSelectAll = useCallback(() => {
+    if (isAllSelected) {
+      setSelectedItems((prev) => {
+        const next = new Set(prev);
+        for (const item of processedItems) {
+          next.delete(item.nom);
+        }
+        return next;
+      });
+    } else {
+      setSelectedItems((prev) => {
+        const next = new Set(prev);
+        for (const item of processedItems) {
+          next.add(item.nom);
+        }
+        return next;
+      });
+    }
+  }, [isAllSelected, processedItems]);
 
   // Glisser-déposer depuis la liste vers un projet
   const handleDragStart = (e: React.DragEvent, item: InboxItem) => {
@@ -233,8 +315,6 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  const isAllSelected = items.length > 0 && selectedItems.size === items.length;
-
   return (
     <div className="inbox-workspace-backdrop" onClick={onClose}>
       <div className="inbox-workspace" onClick={(e) => e.stopPropagation()}>
@@ -286,6 +366,56 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
             </div>
           </header>
 
+          {/* Barre de contrôle rapide : Filtres par type & Tri */}
+          {items.length > 0 && (
+            <div className="inbox-workspace__controls">
+              <div className="inbox-workspace__filter-pills">
+                <button
+                  type="button"
+                  className={`inbox-workspace__filter-pill ${filterType === "all" ? "inbox-workspace__filter-pill--active" : ""}`}
+                  onClick={() => setFilterType("all")}
+                >
+                  Tous ({items.length})
+                </button>
+                <button
+                  type="button"
+                  className={`inbox-workspace__filter-pill ${filterType === "images" ? "inbox-workspace__filter-pill--active" : ""}`}
+                  onClick={() => setFilterType("images")}
+                >
+                  Images
+                </button>
+                <button
+                  type="button"
+                  className={`inbox-workspace__filter-pill ${filterType === "texts" ? "inbox-workspace__filter-pill--active" : ""}`}
+                  onClick={() => setFilterType("texts")}
+                >
+                  Markdown / Textes
+                </button>
+                <button
+                  type="button"
+                  className={`inbox-workspace__filter-pill ${filterType === "folders" ? "inbox-workspace__filter-pill--active" : ""}`}
+                  onClick={() => setFilterType("folders")}
+                >
+                  Dossiers
+                </button>
+              </div>
+
+              <div className="inbox-workspace__sort-row">
+                <span className="inbox-workspace__sort-label">Trier :</span>
+                <select
+                  className="inbox-workspace__sort-select"
+                  value={sortOption}
+                  onChange={(e) => setSortOption(e.target.value as InboxSortOption)}
+                >
+                  <option value="date-desc">Date (récents)</option>
+                  <option value="date-asc">Date (anciens)</option>
+                  <option value="name-asc">Nom (A - Z)</option>
+                  <option value="name-desc">Nom (Z - A)</option>
+                </select>
+              </div>
+            </div>
+          )}
+
           {/* Barre d'outils de multi-sélection */}
           {items.length > 0 && (
             <div className="inbox-workspace__toolbar">
@@ -295,7 +425,7 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                   checked={isAllSelected}
                   onChange={toggleSelectAll}
                 />
-                <span>Tout sélectionner</span>
+                <span>Tout sélectionner ({processedItems.length})</span>
               </label>
               {selectedItems.size > 0 && (
                 <div className="inbox-workspace__selection-pill">
@@ -327,9 +457,14 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                 <h4>Boîte de dépôt vide</h4>
                 <p>Déposez des fichiers dans le dossier 00-Dropbox de votre machine pour les classer ici.</p>
               </div>
+            ) : processedItems.length === 0 ? (
+              <div className="inbox-workspace__empty">
+                <h4>Aucun élément correspondant</h4>
+                <p>Aucun fichier ne correspond au filtre sélectionné.</p>
+              </div>
             ) : (
               <ul className="inbox-workspace__list">
-                {items.map((item) => {
+                {processedItems.map((item) => {
                   const isSelected = selectedItems.has(item.nom);
                   return (
                     <li

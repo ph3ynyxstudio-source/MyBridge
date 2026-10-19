@@ -1,14 +1,13 @@
-import React from "react";
+import React, { useState, useRef } from "react";
 import { UI_TERMS } from "../../../../theme/UI_TERMS";
 import { ThemeMode } from "../../../../theme/design_tokens";
+import { ProjectTabPopover } from "./ProjectTabPopover";
 import "./Topbar.css";
 
 export interface TopbarProps {
   pinnedProjects: string[];
   activeProject: string;
   onSelectProject: (project: string) => void;
-  isTreeOpen: boolean;
-  onToggleTree: () => void;
   inboxCount: number;
   onOpenInbox: () => void;
   onOpenProjectManager: () => void;
@@ -22,14 +21,20 @@ export interface TopbarProps {
   onGoForward?: () => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
+
+  // Navigation contextuelle et gestion des onglets
+  activeSubpath?: string;
+  getProjectSubfolders?: (project: string) => string[];
+  onNavigateSubfolder?: (project: string, subfolder?: string) => void;
+  onOpenInSecondary?: (project: string) => void;
+  onRenameProject?: (project: string) => void;
+  onDeleteProject?: (project: string) => void;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
   pinnedProjects,
   activeProject,
   onSelectProject,
-  isTreeOpen,
-  onToggleTree,
   inboxCount,
   onOpenInbox,
   onOpenProjectManager,
@@ -43,25 +48,64 @@ export const Topbar: React.FC<TopbarProps> = ({
   onGoForward,
   theme,
   onToggleTheme,
+  activeSubpath,
+  getProjectSubfolders,
+  onNavigateSubfolder,
+  onOpenInSecondary,
+  onRenameProject,
+  onDeleteProject,
 }) => {
+  const [popoverProject, setPopoverProject] = useState<{
+    project: string;
+    x: number;
+  } | null>(null);
+
+  const clickTimerRef = useRef<number | null>(null);
+
+  const handleTabClick = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    project: string
+  ) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = rect.left;
+
+    if (clickTimerRef.current) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+      // Double-clic détecté : navigation immédiate à la racine du projet
+      setPopoverProject(null);
+      onSelectProject(project);
+      onNavigateSubfolder?.(project, undefined);
+      return;
+    }
+
+    clickTimerRef.current = window.setTimeout(() => {
+      clickTimerRef.current = null;
+      // Clic simple : bascule du popover de navigation des sous-dossiers
+      setPopoverProject((prev) =>
+        prev?.project === project ? null : { project, x }
+      );
+    }, 220);
+  };
+
+  const handleTabDoubleClick = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    project: string
+  ) => {
+    e.preventDefault();
+    if (clickTimerRef.current) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+    setPopoverProject(null);
+    onSelectProject(project);
+    onNavigateSubfolder?.(project, undefined);
+  };
+
   return (
     <header className="topbar">
-      {/* ZONE GAUCHE : Menu ☰, Boîte de dépôt (Inbox + badge jaune), (+), Onglets projets */}
+      {/* ZONE GAUCHE : Boîte de dépôt (Inbox + badge jaune), (+), Onglets projets */}
       <div className="topbar__zone topbar__zone--left">
-        <button
-          type="button"
-          className={`topbar__icon-btn ${isTreeOpen ? "topbar__icon-btn--active" : ""}`}
-          onClick={onToggleTree}
-          title={UI_TERMS.topbar.toggleTree}
-          aria-label={UI_TERMS.topbar.toggleTree}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </button>
-
         {/* Bouton Boîte de dépôt (Inbox locale) avec badge d'alerte jaune */}
         <button
           type="button"
@@ -119,7 +163,9 @@ export const Topbar: React.FC<TopbarProps> = ({
                 <button
                   type="button"
                   className={`topbar__tab ${isActive ? "topbar__tab--active" : ""}`}
-                  onClick={() => onSelectProject(project)}
+                  onClick={(e) => handleTabClick(e, project)}
+                  onDoubleClick={(e) => handleTabDoubleClick(e, project)}
+                  title={`Clic simple : sous-dossiers • Double-clic : racine (${project})`}
                 >
                   {project}
                 </button>
@@ -130,7 +176,30 @@ export const Topbar: React.FC<TopbarProps> = ({
         </nav>
       </div>
 
-      {/* ZONE CENTRE : Accueil, Identité MyBr|dge & Indicateur Split-view (V2+) */}
+      {/* Popover contextuel ancré sous l'onglet cliqué */}
+      {popoverProject && (
+        <ProjectTabPopover
+          project={popoverProject.project}
+          x={popoverProject.x}
+          availableSubfolders={
+            getProjectSubfolders?.(popoverProject.project) || []
+          }
+          activeSubpath={
+            popoverProject.project === activeProject ? activeSubpath : undefined
+          }
+          onNavigateSubfolder={(project, subfolder) => {
+            onSelectProject(project);
+            onNavigateSubfolder?.(project, subfolder);
+            setPopoverProject(null);
+          }}
+          onOpenInSecondary={onOpenInSecondary}
+          onRename={onRenameProject}
+          onDelete={onDeleteProject}
+          onClose={() => setPopoverProject(null)}
+        />
+      )}
+
+      {/* ZONE CENTRE : Accueil, Identité MyBr|dge */}
       <div className="topbar__zone topbar__zone--center">
         <button
           type="button"
@@ -156,7 +225,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         </button>
       </div>
 
-      {/* ZONE DROITE : Navigation Arrière/Avant, Recherche, Actualiser, Réglages */}
+      {/* ZONE DROITE : Navigation Arrière/Avant, Recherche, Actualiser, Sélecteur de Thème */}
       <div className="topbar__zone topbar__zone--right">
         <div className="topbar__nav-arrows">
           <button

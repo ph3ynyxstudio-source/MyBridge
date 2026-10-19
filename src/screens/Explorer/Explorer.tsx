@@ -7,6 +7,7 @@ import {
   emptyTrash,
   getInboxItems,
   getTrashItems,
+  importExternalPath,
   InboxItem,
   listProjects,
   moveInboxItem,
@@ -16,16 +17,11 @@ import {
   ProjectFolder,
   readProjectContents,
   renameProject,
+  saveFileBytes,
 } from "../../services/storageService";
-import { APP_CONFIG, TreePanelSize } from "../../theme/config";
+import { APP_CONFIG } from "../../theme/config";
 import { ThemeMode } from "../../theme/design_tokens";
-import {
-  NavigationMode,
-  loadSavedNavigationMode,
-  saveNavigationMode,
-} from "../../theme/navigationMode";
 import { Topbar } from "./components/Topbar/Topbar";
-import { TreePanel, ProjectTreeNode } from "./components/TreePanel/TreePanel";
 import { GridView, GridEntry } from "./components/GridView/GridView";
 import { InboxDrawer } from "./components/InboxDrawer/InboxDrawer";
 import {
@@ -93,6 +89,7 @@ function toGridEntry(folder: ProjectFolder): GridEntry {
     label: folder.nom,
     kind: resolveTileKind(folder),
     isFolder: folder.est_dossier,
+    size: folder.taille,
   };
 }
 
@@ -168,22 +165,15 @@ export const Explorer: React.FC = () => {
     };
   }, []);
 
-  // Mode de navigation : 'split-folder' (défaut) ou 'preview-focus'
-  const [navigationMode, setNavigationMode] = useState<NavigationMode>(() => {
-    return loadSavedNavigationMode();
-  });
-
-  const handleToggleNavigationMode = useCallback((mode: NavigationMode) => {
-    setNavigationMode(mode);
-    saveNavigationMode(mode);
-  }, []);
-
   // Fichier en cours de prévisualisation dans le panneau droit (Visualiseur)
   const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
 
   const handleClosePreview = useCallback(() => {
     setPreviewFile(null);
   }, []);
+
+  // Détection de glisser-déposer de fichiers externes depuis Windows
+  const [isExternalDragOver, setIsExternalDragOver] = useState<boolean>(false);
 
   // Presse-papier virtuel pour Copier / Couper / Coller
   const [clipboard, setClipboard] = useState<VirtualClipboard | null>(null);
@@ -222,14 +212,6 @@ export const Explorer: React.FC = () => {
 
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
   const [isInboxDrawerOpen, setIsInboxDrawerOpen] = useState<boolean>(false);
-
-  const [isTreeOpen, setIsTreeOpen] = useState<boolean>(
-    APP_CONFIG.defaults.treePanelOpen
-  );
-  const [treeSize] = useState<TreePanelSize>(
-    APP_CONFIG.defaults.treePanelSize
-  );
-  const [expandedProjects, setExpandedProjects] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Barre latérale droite (Raccourcis d'applications VespΣr, Chr0nosV3rs)
@@ -400,9 +382,6 @@ export const Explorer: React.FC = () => {
             : list[0];
 
         setActiveProject(targetProject);
-        setExpandedProjects((prev) =>
-          prev.includes(targetProject) ? prev : [...prev, targetProject]
-        );
 
         // Sélection intelligente du second projet pour le Split-View
         const defaultSecondary =
@@ -438,15 +417,6 @@ export const Explorer: React.FC = () => {
     void refreshTrash();
   }, [refreshInbox, refreshProjects, refreshTrash]);
 
-  /**
-   * Construction des noeuds de l'arbre latéral gauche (`TreePanel`).
-   */
-  const treeNodes: ProjectTreeNode[] = useMemo(() => {
-    return projects.map((projName) => ({
-      name: projName,
-      children: projectSubfoldersMap[projName] ?? [],
-    }));
-  }, [projects, projectSubfoldersMap]);
 
   /**
    * Entrées de la grille principale filtrées par la recherche.
@@ -507,9 +477,6 @@ export const Explorer: React.FC = () => {
       if (!projectName) return;
       setActiveProject(projectName);
       setCurrentSubpath(subpath);
-      setExpandedProjects((prev) =>
-        prev.includes(projectName) ? prev : [...prev, projectName]
-      );
       void loadProjectFolder(projectName, subpath);
 
       setNavHistory((prev) => {
@@ -587,16 +554,6 @@ export const Explorer: React.FC = () => {
   };
 
   /**
-   * Sélection d'un projet ou d'un sous-dossier depuis le `TreePanel`.
-   */
-  const handleSelectFolderFromTree = (
-    projectName: string,
-    folderName?: string
-  ) => {
-    navigateTo(projectName, folderName);
-  };
-
-  /**
    * Clic simple sur une tuile de la grille principale : met en surbrillance.
    */
   const handleSelectGridEntry = (entry: GridEntry) => {
@@ -617,22 +574,11 @@ export const Explorer: React.FC = () => {
 
   /**
    * Double-clic sur un dossier de la grille centrale :
-   * - Si navigationMode === 'split-folder' : le panneau central reste au niveau actuel,
-   *   le panneau droit s'ouvre et charge l'arborescence et le contenu du sous-dossier double-cliqué.
-   * - Si navigationMode === 'preview-focus' : navigation normale au sein du panneau central.
+   * Navigue directement à l'intérieur du dossier sélectionné.
    */
   const handleOpenFolderEntry = (entry: GridEntry) => {
     if (!activeProject || !entry.isFolder) return;
-
-    if (navigationMode === "split-folder") {
-      setPreviewFile(null);
-      setIsSplitViewActive(true);
-      setSecondaryProject(activeProject);
-      setSecondarySubpath(entry.id);
-      void loadSecondaryProjectFolder(activeProject, entry.id);
-    } else {
-      navigateTo(activeProject, entry.id);
-    }
+    navigateTo(activeProject, entry.id);
   };
 
   /**
@@ -658,6 +604,7 @@ export const Explorer: React.FC = () => {
         project: activeProject,
         subpath: entry.id,
         label: entry.label,
+        size: entry.size,
       });
     } else {
       try {
@@ -695,6 +642,7 @@ export const Explorer: React.FC = () => {
         project: secondaryProject,
         subpath: entry.id,
         label: entry.label,
+        size: entry.size,
       });
     } else {
       try {
@@ -720,14 +668,6 @@ export const Explorer: React.FC = () => {
     await moveInboxItem(itemName, targetProject, targetSubpath);
     await refreshInbox();
     await refreshProjects(targetProject, currentSubpath);
-  };
-
-  const handleToggleProjectExpand = (projectName: string) => {
-    setExpandedProjects((prev) =>
-      prev.includes(projectName)
-        ? prev.filter((p) => p !== projectName)
-        : [...prev, projectName]
-    );
   };
 
   const handleRefreshAll = () => {
@@ -925,58 +865,6 @@ export const Explorer: React.FC = () => {
   };
 
   /**
-   * Clic droit sur un projet dans l'arborescence latérale gauche (`TreePanel`).
-   */
-  const handleContextMenuProject = (e: React.MouseEvent, projectName: string) => {
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      targetEntry: {
-        id: "",
-        label: projectName,
-        kind: "folder",
-        isFolder: true,
-      },
-      targetProject: projectName,
-      targetSubpath: undefined,
-    });
-  };
-
-  /**
-   * Clic droit sur un sous-dossier dans l'arborescence latérale gauche (`TreePanel`).
-   */
-  const handleContextMenuFolder = (
-    e: React.MouseEvent,
-    projectName: string,
-    folderName: string
-  ) => {
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      targetEntry: {
-        id: folderName,
-        label: folderName,
-        kind: "folder",
-        isFolder: true,
-      },
-      targetProject: projectName,
-      targetSubpath: folderName,
-    });
-  };
-
-  /**
-   * Clic droit sur le fond de l'arborescence latérale gauche (`TreePanel`).
-   */
-  const handleContextMenuTreeBg = (e: React.MouseEvent) => {
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      targetProject: activeProject,
-      targetSubpath: currentSubpath,
-    });
-  };
-
-  /**
    * Ouverture du menu contextuel sur le fond de la grille.
    */
   const handleOpenGridContextMenu = (
@@ -995,14 +883,15 @@ export const Explorer: React.FC = () => {
   /**
    * Action contextuelle : Ouvrir le projet ou sous-dossier dans le panneau secondaire.
    */
-  const handleOpenInSecondary = () => {
-    if (!contextMenu?.targetEntry) return;
-    const { targetProject, targetEntry } = contextMenu;
+  const handleOpenInSecondary = (overrideProject?: string) => {
+    const proj = overrideProject || contextMenu?.targetProject;
+    if (!proj) return;
+    const sub = overrideProject ? undefined : (contextMenu?.targetEntry?.id || undefined);
     setPreviewFile(null);
     setIsSplitViewActive(true);
-    setSecondaryProject(targetProject);
-    setSecondarySubpath(targetEntry.id || undefined);
-    void loadSecondaryProjectFolder(targetProject, targetEntry.id || undefined);
+    setSecondaryProject(proj);
+    setSecondarySubpath(sub);
+    void loadSecondaryProjectFolder(proj, sub);
   };
 
   /**
@@ -1016,6 +905,7 @@ export const Explorer: React.FC = () => {
       project: targetProject,
       subpath: targetEntry.id,
       label: targetEntry.label,
+      size: targetEntry.size,
     });
   };
 
@@ -1153,6 +1043,39 @@ export const Explorer: React.FC = () => {
   };
 
   /**
+   * Importation de fichiers externes (glissés depuis Windows)
+   * vers l'Inbox (par défaut) ou vers un projet cible.
+   */
+  const handleImportExternalFiles = async (
+    files: FileList | File[],
+    targetProject?: string,
+    targetSubpath?: string
+  ) => {
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const nativePath = (file as unknown as { path?: string }).path;
+        if (nativePath) {
+          await importExternalPath(nativePath, targetProject, targetSubpath);
+        } else {
+          const buffer = await file.arrayBuffer();
+          const bytes = Array.from(new Uint8Array(buffer));
+          await saveFileBytes(file.name, bytes, targetProject, targetSubpath);
+        }
+      }
+      await refreshInbox();
+      if (targetProject) {
+        await loadProjectFolder(targetProject, targetSubpath);
+        if (isSplitViewActive && secondaryProject === targetProject) {
+          await loadSecondaryProjectFolder(secondaryProject, targetSubpath);
+        }
+      }
+    } catch (err) {
+      console.error("[Explorer] Erreur lors de l'importation de fichiers externes :", err);
+    }
+  };
+
+  /**
    * Dépôt d'un élément sur une tuile dossier.
    */
   const handleDropOnFolder = async (
@@ -1161,6 +1084,22 @@ export const Explorer: React.FC = () => {
     targetProject: string
   ) => {
     e.preventDefault();
+    e.stopPropagation();
+
+    // Dépôt de fichiers externes depuis l'OS Windows
+    if (
+      e.dataTransfer.files &&
+      e.dataTransfer.files.length > 0 &&
+      !e.dataTransfer.types.includes("application/json")
+    ) {
+      await handleImportExternalFiles(
+        e.dataTransfer.files,
+        targetProject,
+        targetFolderEntry.id
+      );
+      return;
+    }
+
     const raw =
       e.dataTransfer.getData("application/json") ||
       e.dataTransfer.getData("text/plain");
@@ -1191,6 +1130,22 @@ export const Explorer: React.FC = () => {
     targetProject: string
   ) => {
     e.preventDefault();
+    e.stopPropagation();
+
+    // Dépôt de fichiers externes depuis l'OS Windows
+    if (
+      e.dataTransfer.files &&
+      e.dataTransfer.files.length > 0 &&
+      !e.dataTransfer.types.includes("application/json")
+    ) {
+      await handleImportExternalFiles(
+        e.dataTransfer.files,
+        targetProject,
+        targetSubpath
+      );
+      return;
+    }
+
     const raw =
       e.dataTransfer.getData("application/json") ||
       e.dataTransfer.getData("text/plain");
@@ -1237,13 +1192,63 @@ export const Explorer: React.FC = () => {
   };
 
   return (
-    <div className="explorer-screen">
+    <div
+      className={`explorer-screen ${isExternalDragOver ? "explorer-screen--external-drag" : ""}`}
+      onDragOver={(e) => {
+        if (e.dataTransfer && e.dataTransfer.types.includes("Files")) {
+          const isInternal = e.dataTransfer.types.includes("application/json");
+          if (!isInternal) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            setIsExternalDragOver(true);
+          }
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setIsExternalDragOver(false);
+        }
+      }}
+      onDrop={async (e) => {
+        if (e.dataTransfer && e.dataTransfer.types.includes("Files")) {
+          const isInternal = e.dataTransfer.types.includes("application/json");
+          if (!isInternal) {
+            e.preventDefault();
+            setIsExternalDragOver(false);
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              await handleImportExternalFiles(e.dataTransfer.files, undefined, undefined);
+            }
+          }
+        }
+      }}
+    >
+      {/* Overlay visuel lors du survol de fichiers externes Windows */}
+      {isExternalDragOver && (
+        <div className="explorer-screen__drop-overlay">
+          <svg
+            className="explorer-screen__drop-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          <span className="explorer-screen__drop-text">
+            Déposez vos fichiers pour les ajouter à la Boîte de dépôt
+          </span>
+          <span className="explorer-screen__drop-subtext">
+            Les éléments importés apparaîtront instantanément dans l'Inbox
+          </span>
+        </div>
+      )}
+
       <Topbar
         pinnedProjects={pinnedProjects}
         activeProject={activeProject}
         onSelectProject={handleSelectProject}
-        isTreeOpen={isTreeOpen}
-        onToggleTree={() => setIsTreeOpen((prev) => !prev)}
         inboxCount={inboxItems.length}
         onOpenInbox={() => setIsInboxDrawerOpen((prev) => !prev)}
         onOpenProjectManager={() => setIsShortcutsOpen((prev) => !prev)}
@@ -1257,6 +1262,12 @@ export const Explorer: React.FC = () => {
         onGoForward={handleGoForward}
         theme={theme}
         onToggleTheme={handleToggleTheme}
+        activeSubpath={currentSubpath}
+        getProjectSubfolders={(p) => projectSubfoldersMap[p] || []}
+        onNavigateSubfolder={(project, subfolder) => navigateTo(project, subfolder)}
+        onOpenInSecondary={handleOpenInSecondary}
+        onRenameProject={(project) => handleStartRenameProject(project)}
+        onDeleteProject={(project) => setProjectToDelete(project)}
       />
 
       {/* Panneau contextuel de raccourcis ancré sous le bouton (+) */}
@@ -1270,21 +1281,7 @@ export const Explorer: React.FC = () => {
       />
 
       <main className="explorer-screen__body">
-        <TreePanel
-          isOpen={isTreeOpen}
-          size={treeSize}
-          projects={treeNodes}
-          expandedProjects={expandedProjects}
-          onToggleProjectExpand={handleToggleProjectExpand}
-          activeProject={activeProject}
-          activeFolder={currentSubpath || selectedEntryId}
-          onSelectFolder={handleSelectFolderFromTree}
-          navigationMode={navigationMode}
-          onToggleNavigationMode={handleToggleNavigationMode}
-          onContextMenuProject={handleContextMenuProject}
-          onContextMenuFolder={handleContextMenuFolder}
-          onContextMenuTreeBg={handleContextMenuTreeBg}
-        />
+        {/* TreePanel retiré : GridView s'étend sur tout l'espace disponible */}
 
         <GridView
           hasActiveProject={Boolean(activeProject)}

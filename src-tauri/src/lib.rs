@@ -3,9 +3,10 @@ pub mod storage;
 
 use launcher::launch_external_app;
 use storage::{
-    copy_item, create_project, delete_project, empty_trash, get_file_absolute_path, get_inbox_items,
-    get_trash_items, init_storage_dirs, list_projects, move_inbox_item, move_item, move_to_trash,
-    open_file_in_system, read_file_text, read_project_contents, rename_project,
+    copy_item, create_project, delete_project, empty_trash, get_file_absolute_path,
+    get_file_metadata, get_inbox_items, get_trash_items, import_external_path, init_storage_dirs,
+    list_projects, move_inbox_item, move_item, move_to_trash, open_file_in_system, read_file_text,
+    read_project_contents, rename_project, save_file_bytes, write_text_file,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -34,7 +35,11 @@ pub fn run() {
             get_trash_items,
             empty_trash,
             get_file_absolute_path,
-            read_file_text
+            read_file_text,
+            get_file_metadata,
+            write_text_file,
+            import_external_path,
+            save_file_bytes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

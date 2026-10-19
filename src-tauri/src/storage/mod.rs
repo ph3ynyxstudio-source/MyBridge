@@ -378,7 +378,16 @@ pub fn read_project_contents(
     read_directory_entries(&target_dir, &project_root, true)
 }
 
-/// Crée un nouveau dossier de projet dans le coffre `projects/{project_name}`.
+/// Arborescence standardisée créée automatiquement dans chaque nouveau projet.
+pub const STANDARD_SUBFOLDERS: [&str; 4] = [
+    "01-Docs",
+    "02-Assets",
+    "03-Sessions",
+    "99-Archive",
+];
+
+/// Crée un nouveau dossier de projet dans le coffre `projects/{project_name}`
+/// avec l'arborescence standardisée (01-Docs, 02-Assets, 03-Sessions, 99-Archive).
 /// Renvoie une erreur si le nom est invalide ou si le projet existe déjà.
 #[tauri::command]
 pub fn create_project(app: AppHandle, project_name: String) -> Result<String, String> {
@@ -399,6 +408,12 @@ pub fn create_project(app: AppHandle, project_name: String) -> Result<String, St
             valid_name, e
         )
     })?;
+
+    // Création automatique de l'arborescence standardisée
+    for sub in STANDARD_SUBFOLDERS {
+        let sub_path = project_dir.join(sub);
+        let _ = fs::create_dir_all(&sub_path);
+    }
 
     Ok(valid_name)
 }
@@ -459,6 +474,146 @@ pub fn delete_project(app: AppHandle, project_name: String) -> Result<(), String
     move_entry_safely(&src, &dest)?;
 
     Ok(())
+}
+
+/// Métadonnées détaillées d'un fichier.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileMetadataInfo {
+    pub size: u64,
+    pub modified: u64,
+}
+
+/// Lit la taille réelle et l'horodatage d'un fichier via fs::metadata.
+#[tauri::command]
+pub fn get_file_metadata(
+    app: AppHandle,
+    project_name: String,
+    subpath: String,
+) -> Result<FileMetadataInfo, String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+    let valid_project = validate_single_name(&project_name, "project_name")?;
+    let valid_subpath = validate_relative_subpath(Some(subpath))?;
+
+    let file_path = projects_dir.join(&valid_project).join(&valid_subpath);
+    if !file_path.exists() {
+        return Err("Fichier introuvable sur le disque.".to_string());
+    }
+
+    let meta = fs::metadata(&file_path)
+        .map_err(|e| format!("Impossible de lire les métadonnées : {}", e))?;
+
+    let size = meta.len();
+    let modified = extract_modified_timestamp(&meta);
+
+    Ok(FileMetadataInfo { size, modified })
+}
+
+/// Écrit ou sauvegarde le contenu texte dans un fichier texte existant ou nouveau.
+#[tauri::command]
+pub fn write_text_file(
+    app: AppHandle,
+    project_name: String,
+    subpath: String,
+    content: String,
+) -> Result<(), String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+    let valid_project = validate_single_name(&project_name, "project_name")?;
+    let valid_subpath = validate_relative_subpath(Some(subpath))?;
+
+    if valid_subpath.as_os_str().is_empty() {
+        return Err("Le sous-chemin du fichier ne peut pas être vide.".to_string());
+    }
+
+    let file_path = projects_dir.join(&valid_project).join(&valid_subpath);
+
+    if let Some(parent) = file_path.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Impossible de créer le dossier parent : {}", e))?;
+        }
+    }
+
+    fs::write(&file_path, content.as_bytes())
+        .map_err(|e| format!("Impossible d'enregistrer le fichier : {}", e))?;
+
+    Ok(())
+}
+
+/// Importe un fichier ou dossier externe (depuis son chemin natif Windows) vers inbox/ ou vers un projet cible.
+#[tauri::command]
+pub fn import_external_path(
+    app: AppHandle,
+    source_path: String,
+    target_project: Option<String>,
+    target_subpath: Option<String>,
+) -> Result<String, String> {
+    let (inbox_dir, projects_dir) = init_storage_dirs(&app)?;
+    let src = PathBuf::from(&source_path);
+
+    if !src.exists() {
+        return Err(format!("Le chemin source n'existe pas : {}", source_path));
+    }
+
+    let file_name = src
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .ok_or_else(|| "Nom de fichier invalide.".to_string())?;
+
+    let dest_dir = if let Some(proj) = target_project {
+        let valid_proj = validate_single_name(&proj, "target_project")?;
+        let valid_sub = validate_relative_subpath(target_subpath)?;
+        let p = projects_dir.join(valid_proj).join(valid_sub);
+        if !p.exists() {
+            fs::create_dir_all(&p)
+                .map_err(|e| format!("Impossible de créer le dossier de destination : {}", e))?;
+        }
+        p
+    } else {
+        inbox_dir
+    };
+
+    let dest = dest_dir.join(&file_name);
+
+    if src.is_file() {
+        fs::copy(&src, &dest)
+            .map_err(|e| format!("Impossible de copier le fichier : {}", e))?;
+    } else if src.is_dir() {
+        copy_dir_recursive(&src, &dest)?;
+    }
+
+    Ok(file_name)
+}
+
+/// Enregistre les octets d'un fichier transféré directement via le DOM vers inbox/ ou un projet cible.
+#[tauri::command]
+pub fn save_file_bytes(
+    app: AppHandle,
+    file_name: String,
+    bytes: Vec<u8>,
+    target_project: Option<String>,
+    target_subpath: Option<String>,
+) -> Result<String, String> {
+    let (inbox_dir, projects_dir) = init_storage_dirs(&app)?;
+    let valid_name = validate_single_name(&file_name, "file_name")?;
+
+    let dest_dir = if let Some(proj) = target_project {
+        let valid_proj = validate_single_name(&proj, "target_project")?;
+        let valid_sub = validate_relative_subpath(target_subpath)?;
+        let p = projects_dir.join(valid_proj).join(valid_sub);
+        if !p.exists() {
+            fs::create_dir_all(&p)
+                .map_err(|e| format!("Impossible de créer le dossier de destination : {}", e))?;
+        }
+        p
+    } else {
+        inbox_dir
+    };
+
+    let dest = dest_dir.join(&valid_name);
+    fs::write(&dest, &bytes)
+        .map_err(|e| format!("Impossible d'écrire le fichier sur le disque : {}", e))?;
+
+    Ok(valid_name)
 }
 
 /// Ouvre un fichier spécifique dans l'application par défaut de Windows.

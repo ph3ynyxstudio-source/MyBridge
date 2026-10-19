@@ -1,0 +1,213 @@
+/* Styles du popover de navigation des onglets de projet */
+
+.project-tab-popover {
+  position: absolute;
+  top: calc(var(--topbar-height) + 4px);
+  width: 270px;
+  background-color: var(--popover-bg);
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-md);
+  box-shadow: var(--popover-shadow);
+  backdrop-filter: blur(12px);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  gap: 8px;
+  user-select: none;
+  animation: popoverFadeIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.project-tab-popover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  gap: 8px;
+}
+
+.project-tab-popover__title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.project-tab-popover__project-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--accent-blue);
+  flex-shrink: 0;
+}
+
+.project-tab-popover__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.05em;
+}
+
+.project-tab-popover__root-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-blue-muted);
+  color: var(--accent-blue);
+  border: 1px solid var(--accent-blue-border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.project-tab-popover__root-btn:hover {
+  background: var(--accent-blue);
+  color: var(--text-on-accent);
+}
+
+.project-tab-popover__section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.project-tab-popover__section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  padding: 2px 4px;
+}
+
+.project-tab-popover__folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.project-tab-popover__folder-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  transition: all 0.12s ease;
+  width: 100%;
+}
+
+.project-tab-popover__folder-item:hover {
+  background-color: var(--accent-hover);
+  color: var(--accent-blue);
+}
+
+.project-tab-popover__folder-item--active {
+  background-color: var(--accent-blue-muted);
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+
+.project-tab-popover__folder-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.popover-folder-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.popover-folder-icon--docs {
+  color: #60a5fa;
+}
+
+.popover-folder-icon--assets {
+  color: #f472b6;
+}
+
+.popover-folder-icon--sessions {
+  color: #34d399;
+}
+
+.popover-folder-icon--archive {
+  color: #fbbf24;
+}
+
+.project-tab-popover__divider {
+  height: 1px;
+  background-color: var(--border-subtle);
+  margin: 2px 0;
+}
+
+.project-tab-popover__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.project-tab-popover__action-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  transition: all 0.12s ease;
+  width: 100%;
+}
+
+.project-tab-popover__action-btn svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.project-tab-popover__action-btn:hover {
+  background-color: var(--accent-hover);
+  color: var(--accent-blue);
+}
+
+.project-tab-popover__action-btn--danger {
+  color: var(--danger);
+}
+
+.project-tab-popover__action-btn--danger:hover {
+  background-color: rgba(214, 69, 69, 0.15);
+  color: var(--danger);
+}
+

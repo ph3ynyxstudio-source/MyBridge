@@ -10,6 +10,7 @@ export interface GridEntry {
   label: string;
   kind: TileKind;
   isFolder: boolean;
+  size?: number;
 }
 
 export interface GridViewProps {
