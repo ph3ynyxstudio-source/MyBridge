@@ -4,7 +4,9 @@
  */
 
 :root {
-  /* Couleurs de base écosystème PH3YNYX.OS (Thème sombre par défaut) */
+  /* ==========================================================================
+     THÈME SOMBRE (Défaut — Base écosystème PH3YNYX.OS)
+     ========================================================================== */
   --bg-app: #030611;
   --bg-carbon: #0a0d14;
   --bg-card: rgba(8, 14, 28, 0.65);
@@ -16,11 +18,13 @@
   --text-primary: #f4f7fb;
   --text-secondary: #7b88a1;
   --text-inverse: #030611;
+  --text-on-accent: #030611;
 
   /* Accents & alertes */
   --accent-blue: #54d6ff;
   --accent-blue-muted: rgba(84, 214, 255, 0.22);
   --accent-blue-border: rgba(84, 214, 255, 0.55);
+  --accent-hover: rgba(84, 214, 255, 0.12);
   --accent-purple: #7e5cff;
   --accent-warning: #facc15;
   --danger: #d64545;
@@ -28,6 +32,22 @@
   /* Bordures & séparateurs */
   --border-subtle: rgba(123, 136, 161, 0.22);
   --border-panel: rgba(84, 214, 255, 0.35);
+
+  /* Overlays, ombres & popovers */
+  --overlay-bg: rgba(3, 6, 17, 0.75);
+  --popover-bg: rgba(7, 19, 31, 0.95);
+  --popover-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), 0 0 14px rgba(84, 214, 255, 0.18);
+  --drawer-shadow: 12px 0 32px rgba(3, 6, 17, 0.8);
+  --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --split-panel-shadow: -8px 0 28px rgba(3, 6, 17, 0.65);
+
+  /* Éléments spécialisés */
+  --icon-tile: #d6dbe3;
+  --tab-active-bg: rgba(84, 214, 255, 0.28);
+  --breadcrumb-bg: rgba(5, 8, 20, 0.45);
+  --input-bg: #d6dbe3;
+  --input-text: #030611;
+  --input-border: transparent;
 
   /* Dimensions globales */
   --topbar-height: 48px;
@@ -56,6 +76,57 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ==========================================================================
+   THÈME AUBE — Palette 1: Brume Matinale (PH3YNYX.OS)
+   ========================================================================== */
+[data-theme="dawn"] {
+  /* Fond & structure (conforme maquette Brume Matinale) */
+  --bg-app: #f3f4f6;          /* Light morning-mist gray */
+  --bg-carbon: #f3f4f6;
+  --bg-card: #e5e9f0;         /* Sidebars / Cards */
+  --bg-panel: #e5e9f0;
+  --bg-topbar: #e5e9f0;
+  --bg-input: #ffffff;
+
+  /* Textes */
+  --text-primary: #1e293b;    /* Text / Active */
+  --text-secondary: #64748b;
+  --text-inverse: #f3f4f6;
+  --text-on-accent: #ffffff;  /* Blanc contrasté sur bouton dawn-cyan */
+
+  /* Accents & alertes */
+  --accent-blue: #00a3a6;     /* Energetic dawn-cyan */
+  --accent-blue-muted: rgba(0, 163, 166, 0.14);
+  --accent-blue-border: rgba(0, 163, 166, 0.4);
+  --accent-hover: #e0f2fe;    /* Hover matinal bleu ciel */
+  --accent-purple: #6d4fd6;
+  --accent-warning: #d97706;
+  --danger: #dc2626;
+
+  /* Bordures & séparateurs */
+  --border-subtle: #d8dee9;   /* Border */
+  --border-panel: rgba(0, 163, 166, 0.35);
+
+  /* Overlays, ombres & popovers */
+  --overlay-bg: rgba(30, 41, 59, 0.45);
+  --popover-bg: rgba(243, 244, 246, 0.98);
+  --popover-shadow: 0 10px 30px rgba(30, 41, 59, 0.14), 0 0 14px rgba(0, 163, 166, 0.16);
+  --drawer-shadow: 10px 0 32px rgba(30, 41, 59, 0.16);
+  --card-shadow: 0 2px 10px rgba(30, 41, 59, 0.08);
+  --split-panel-shadow: -8px 0 24px rgba(30, 41, 59, 0.12);
+
+  /* Éléments spécialisés */
+  --icon-tile: #00a3a6;       /* Icônes de tuiles en cyan aube énergique */
+  --tab-active-bg: #ffffff;   /* Onglet actif clair et lumineux */
+  --breadcrumb-bg: rgba(229, 233, 240, 0.75);
+  --input-bg: #ffffff;
+  --input-text: #1e293b;
+  --input-border: #d8dee9;
+
+  /* Texture carbone aube (diagonale très subtile teintée en cyan aube) */
+  --carbon-pattern: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%2300a3a6' fill-opacity='0.04' fill-rule='evenodd'%3E%3Cpath d='M5 0h1L0 6V5zM6 5v1H5z'/%3E%3C/g%3E%3C/svg%3E");
+}
+
 *,
 *::before,
 *::after {
@@ -74,6 +145,7 @@ body,
   background-image: var(--carbon-pattern);
   color: var(--text-primary);
   user-select: none;
+  transition: background-color 0.22s ease, color 0.22s ease;
 }
 
 button {
@@ -89,7 +161,7 @@ input {
   outline: none;
 }
 
-/* Scrollbars discrètes cohérentes avec le thème sombre */
+/* Scrollbars discrètes adaptées aux deux thèmes */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

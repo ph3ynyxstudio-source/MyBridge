@@ -16,11 +16,13 @@ export const APP_CONFIG = {
     treePanelOpen: true,
     treePanelSize: "compact" as TreePanelSize,
     inboxPendingCount: 1,
+    defaultTheme: "dark" as "dark" | "dawn",
+    themeStorageKey: "mybridge_theme",
   },
   features: {
-    // MVP Lock : fonctionnalités V2+ désactivées ou en simple indicateur visuel
+    // MVP Lock : fonctionnalités V2+
     enableSplitViewV2: false,
     enableListViewToggleV2: false,
-    enableDawnThemeV2: false,
+    enableDawnThemeV2: true,
   },
 } as const;

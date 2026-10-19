@@ -3,7 +3,7 @@
 .trash-drawer-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(3, 6, 17, 0.75);
+  background-color: var(--overlay-bg);
   backdrop-filter: blur(6px);
   z-index: 950;
   display: flex;
@@ -28,9 +28,10 @@
   border-left: 1.5px solid var(--border-panel);
   display: flex;
   flex-direction: column;
-  box-shadow: -10px 0 35px rgba(0, 0, 0, 0.7);
+  box-shadow: var(--drawer-shadow);
   animation: trashDrawerSlideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
+  transition: background-color 0.22s ease, border-color 0.22s ease;
 }
 
 @keyframes trashDrawerSlideIn {
@@ -50,6 +51,7 @@
   justify-content: space-between;
   gap: 16px;
   background-color: var(--bg-topbar);
+  transition: background-color 0.22s ease, border-color 0.22s ease;
 }
 
 .trash-drawer__title {
@@ -82,24 +84,23 @@
 }
 
 .trash-drawer__btn--refresh {
-  background-color: rgba(84, 214, 255, 0.12);
+  background-color: var(--accent-hover);
   color: var(--accent-blue);
   border: 1px solid var(--accent-blue-border);
 }
 
 .trash-drawer__btn--refresh:hover {
-  background-color: rgba(84, 214, 255, 0.22);
+  background-color: var(--accent-blue-muted);
 }
 
 .trash-drawer__btn--empty {
-  background-color: rgba(214, 69, 69, 0.15);
-  color: #ff7878;
-  border: 1px solid rgba(214, 69, 69, 0.45);
+  background-color: rgba(220, 38, 38, 0.12);
+  color: var(--danger);
+  border: 1px solid rgba(220, 38, 38, 0.35);
 }
 
 .trash-drawer__btn--empty:hover {
-  background-color: rgba(214, 69, 69, 0.3);
-  color: #ff9999;
+  background-color: rgba(220, 38, 38, 0.22);
 }
 
 .trash-drawer__close-btn {
@@ -116,7 +117,7 @@
 
 .trash-drawer__close-btn:hover {
   color: var(--text-primary);
-  background-color: rgba(84, 214, 255, 0.12);
+  background-color: var(--accent-hover);
 }
 
 .trash-drawer__content {
@@ -140,7 +141,7 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background-color: rgba(84, 214, 255, 0.08);
+  background-color: var(--accent-hover);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -180,11 +181,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.22s ease;
 }
 
 .trash-drawer__card:hover {
-  border-color: rgba(214, 69, 69, 0.4);
+  border-color: rgba(220, 38, 38, 0.4);
 }
 
 .trash-drawer__card-info {
@@ -235,7 +236,7 @@
 .trash-confirm-overlay {
   position: absolute;
   inset: 0;
-  background-color: rgba(3, 6, 17, 0.85);
+  background-color: var(--overlay-bg);
   backdrop-filter: blur(8px);
   z-index: 10;
   display: flex;
@@ -249,16 +250,16 @@
   width: 360px;
   max-width: 90%;
   background-color: var(--bg-panel);
-  border: 1px solid rgba(214, 69, 69, 0.5);
+  border: 1px solid rgba(220, 38, 38, 0.5);
   border-radius: var(--radius-md);
   padding: 20px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 20px rgba(214, 69, 69, 0.25);
+  box-shadow: var(--popover-shadow);
 }
 
 .trash-confirm-modal__title {
   font-size: 16px;
   font-weight: 700;
-  color: #ff7878;
+  color: var(--danger);
   margin-bottom: 8px;
 }
 
@@ -293,7 +294,7 @@
 
 .trash-confirm-modal__btn--cancel:hover {
   color: var(--text-primary);
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--accent-hover);
 }
 
 .trash-confirm-modal__btn--danger {

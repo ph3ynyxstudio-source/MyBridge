@@ -16,6 +16,7 @@ import {
   readProjectContents,
 } from "../../services/storageService";
 import { APP_CONFIG, TreePanelSize } from "../../theme/config";
+import { ThemeMode } from "../../theme/design_tokens";
 import { Topbar } from "./components/Topbar/Topbar";
 import { TreePanel, ProjectTreeNode } from "./components/TreePanel/TreePanel";
 import { GridView, GridEntry } from "./components/GridView/GridView";
@@ -95,6 +96,32 @@ export const Explorer: React.FC = () => {
     return [];
   });
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
+
+  // Gestion du thème (Sombre / Aube - Palette 1: Brume Matinale)
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    try {
+      const saved = localStorage.getItem(APP_CONFIG.defaults.themeStorageKey);
+      if (saved === "dark" || saved === "dawn") {
+        return saved;
+      }
+    } catch {
+      // fallback
+    }
+    return APP_CONFIG.defaults.defaultTheme;
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem(APP_CONFIG.defaults.themeStorageKey, theme);
+    } catch {
+      // ignore
+    }
+  }, [theme]);
+
+  const handleToggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === "dark" ? "dawn" : "dark"));
+  }, []);
 
   // Presse-papier virtuel pour Copier / Couper / Coller
   const [clipboard, setClipboard] = useState<VirtualClipboard | null>(null);
@@ -900,6 +927,8 @@ export const Explorer: React.FC = () => {
         onGoBack={handleGoBack}
         canGoForward={canGoForward}
         onGoForward={handleGoForward}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
       />
 
       {/* Panneau contextuel de raccourcis ancré sous le bouton (+) */}

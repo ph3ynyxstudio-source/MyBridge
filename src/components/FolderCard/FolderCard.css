@@ -25,7 +25,7 @@
 }
 
 .folder-card:hover {
-  background-color: rgba(84, 214, 255, 0.08);
+  background-color: var(--accent-hover);
   border-color: var(--border-subtle);
   transform: translateY(-1px);
 }
@@ -33,7 +33,7 @@
 .folder-card--selected {
   background-color: var(--accent-blue-muted);
   border-color: var(--accent-blue-border);
-  box-shadow: 0 0 18px rgba(84, 214, 255, 0.16);
+  box-shadow: 0 0 16px var(--accent-blue-border);
 }
 
 .folder-card--selected:hover {
@@ -44,7 +44,7 @@
 .folder-card--drag-over {
   background-color: var(--accent-blue-muted) !important;
   border-color: var(--accent-blue) !important;
-  box-shadow: 0 0 20px rgba(84, 214, 255, 0.45) !important;
+  box-shadow: 0 0 20px var(--accent-blue) !important;
   transform: scale(1.05);
 }
 
@@ -62,14 +62,14 @@
 }
 
 .folder-card__svg--folder {
-  color: var(--bg-input);
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.35));
+  color: var(--icon-tile);
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
 }
 
 .folder-card__svg--add {
   color: var(--accent-blue);
   opacity: 0.85;
-  filter: drop-shadow(0 4px 12px rgba(84, 214, 255, 0.25));
+  filter: drop-shadow(0 4px 12px var(--accent-blue-border));
   transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
@@ -82,7 +82,7 @@
 .folder-card__svg--file {
   width: 66px;
   height: 62px;
-  color: var(--bg-input);
+  color: var(--icon-tile);
 }
 
 .folder-card__label {

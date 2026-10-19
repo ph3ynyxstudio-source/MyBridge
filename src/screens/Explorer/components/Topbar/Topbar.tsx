@@ -1,5 +1,6 @@
 import React from "react";
 import { UI_TERMS } from "../../../../theme/UI_TERMS";
+import { ThemeMode } from "../../../../theme/design_tokens";
 import "./Topbar.css";
 
 export interface TopbarProps {
@@ -19,6 +20,8 @@ export interface TopbarProps {
   onGoBack?: () => void;
   canGoForward?: boolean;
   onGoForward?: () => void;
+  theme: ThemeMode;
+  onToggleTheme: () => void;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
@@ -38,6 +41,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   onGoBack,
   canGoForward = false,
   onGoForward,
+  theme,
+  onToggleTheme,
 }) => {
   return (
     <header className="topbar">
@@ -210,6 +215,41 @@ export const Topbar: React.FC<TopbarProps> = ({
             <path d="M3 12a9 9 0 0 0 15.5 6.3L21 16" />
             <path d="M16 16h5v5" />
           </svg>
+        </button>
+
+        {/* Sélecteur de Thème Sombre / Aube (Brume Matinale) */}
+        <button
+          type="button"
+          className={`topbar__theme-toggle topbar__theme-toggle--${theme}`}
+          onClick={onToggleTheme}
+          title={theme === "dark" ? "Passer au thème Aube (Brume Matinale)" : "Passer au thème Sombre"}
+          aria-label={UI_TERMS.topbar.themeToggle}
+        >
+          <span
+            className={`topbar__theme-icon ${theme === "dark" ? "topbar__theme-icon--active" : ""}`}
+            title="Thème Sombre"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          </span>
+          <span
+            className={`topbar__theme-icon ${theme === "dawn" ? "topbar__theme-icon--active" : ""}`}
+            title="Thème Aube"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <circle cx="12" cy="12" r="5" />
+              <line x1="12" y1="1" x2="12" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="23" />
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+              <line x1="1" y1="12" x2="3" y2="12" />
+              <line x1="21" y1="12" x2="23" y2="12" />
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+            </svg>
+          </span>
+          <span className="topbar__theme-thumb" aria-hidden="true" />
         </button>
 
         <button

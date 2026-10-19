@@ -4,11 +4,11 @@
   position: fixed;
   z-index: 1000;
   width: 175px;
-  background-color: rgba(7, 19, 31, 0.95);
+  background-color: var(--popover-bg);
   backdrop-filter: blur(14px);
   border: 1px solid var(--border-panel);
   border-radius: var(--radius-md);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), 0 0 14px rgba(84, 214, 255, 0.18);
+  box-shadow: var(--popover-shadow);
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -72,21 +72,21 @@
 }
 
 .context-menu__item:hover:not(:disabled) {
-  background-color: rgba(84, 214, 255, 0.16);
+  background-color: var(--accent-hover);
   color: var(--accent-blue);
 }
 
 .context-menu__item--danger {
-  color: #ff6b6b;
+  color: var(--danger);
 }
 
 .context-menu__item--danger svg {
-  color: #ff6b6b;
+  color: var(--danger);
 }
 
 .context-menu__item--danger:hover:not(:disabled) {
-  background-color: rgba(214, 69, 69, 0.2);
-  color: #ff8585;
+  background-color: rgba(220, 38, 38, 0.14);
+  color: var(--danger);
 }
 
 .context-menu__item:disabled,

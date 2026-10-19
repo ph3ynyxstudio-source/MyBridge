@@ -65,7 +65,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--bg-input);
+  color: var(--text-secondary);
   background-color: transparent;
   border: 1px solid transparent;
   transition: all 0.16s ease;
@@ -73,7 +73,7 @@
 }
 
 .tree-panel__mode-pill:hover {
-  background-color: rgba(84, 214, 255, 0.12);
+  background-color: var(--accent-hover);
   color: var(--text-primary);
 }
 
@@ -83,13 +83,13 @@
 }
 
 .tree-panel__mode-pill--active {
-  background-color: rgba(84, 214, 255, 0.22);
+  background-color: var(--accent-blue-muted);
   border-color: var(--accent-blue-border);
   color: var(--accent-blue);
 }
 
 .tree-panel__mode-pill--split-active {
-  background-color: rgba(84, 214, 255, 0.28);
+  background-color: var(--accent-blue-muted);
   border-color: var(--accent-blue);
-  box-shadow: 0 0 12px rgba(84, 214, 255, 0.55), inset 0 0 6px rgba(84, 214, 255, 0.25);
+  box-shadow: 0 0 10px var(--accent-blue-border);
 }

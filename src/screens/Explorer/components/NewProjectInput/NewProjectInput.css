@@ -22,8 +22,8 @@
   padding: 0 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
-  background-color: var(--bg-topbar);
-  color: var(--text-primary);
+  background-color: var(--input-bg);
+  color: var(--input-text);
   font-size: 12px;
   transition: border-color 0.14s ease;
 }
@@ -37,7 +37,7 @@
   padding: 0 12px;
   border-radius: var(--radius-sm);
   background-color: var(--accent-blue);
-  color: var(--text-inverse);
+  color: var(--text-on-accent);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.05em;

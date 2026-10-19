@@ -15,7 +15,11 @@ le layout de l'écran (voir layout.md)
 
 ## Cohérence avec l'écosystème PH3YNYX.OS
 
-MyBr|dge partage la même base de couleurs que Chr0nosV3rs et VespΣr — fond sombre navy/presque noir, accents cyan et violet. Chaque app garde le droit à une touche distinctive propre (ex: le fond texturé carbone pour MyBr|dge), mais la base reste commune pour que l'écosystème se sente comme un tout, pas trois apps disparates.
+MyBr|dge partage la même base de couleurs que Chr0nosV3rs et VespΣr :
+- **Thème Sombre (défaut)** : fond navy/presque noir, accents cyan `#54d6ff` et violet `#7e5cff`.
+- **Thème Aube (Palette 1: Brume Matinale)** : fond brume matinale clair `#F3F4F6`, panneaux/cartes `#E5E9F0`, accents cyan énergique `#00A3A6`, texte ardoise sombre `#1E293B`, survols bleu ciel `#E0F2FE`.
+
+Chaque app garde le droit à une touche distinctive propre (le fond texturé carbone pour MyBr|dge), mais la base reste commune pour que l'écosystème forme un tout unifié : `MYBR|DGE / VESPΣR / CHR0N0SV3RS`.
 
 ---
 
@@ -25,27 +29,75 @@ Repris de Chr0nosV3rs, base commune de l'écosystème :
 
 ```css
 --bg-app: #030611;
+--bg-carbon: #0a0d14;
 --bg-card: rgba(8, 14, 28, 0.65);
+--bg-panel: #07131f;
+--bg-topbar: #050814;
+--bg-input: #d6dbe3;
+
 --text-primary: #f4f7fb;
 --text-secondary: #7b88a1;
+--text-inverse: #030611;
+--text-on-accent: #030611;
+
 --accent-blue: #54d6ff;
+--accent-blue-muted: rgba(84, 214, 255, 0.22);
+--accent-blue-border: rgba(84, 214, 255, 0.55);
+--accent-hover: rgba(84, 214, 255, 0.12);
 --accent-purple: #7e5cff;
+--accent-warning: #facc15;
+--danger: #d64545;
+
+--border-subtle: rgba(123, 136, 161, 0.22);
+--border-panel: rgba(84, 214, 255, 0.35);
+
+--icon-tile: #d6dbe3;
+--tab-active-bg: rgba(84, 214, 255, 0.28);
+--breadcrumb-bg: rgba(5, 8, 20, 0.45);
 ```
 
-## Tokens — thème clair "Aube" (V2+, non prioritaire au MVP)
+---
 
-Repris de Chr0nosV3rs, à activer si/quand MyBr|dge reçoit un sélecteur de thème :
+## Tokens — thème clair "Aube" (Palette 1 : Brume Matinale)
+
+Conforme à la spécification visuelle `PH3YNYX.OS` (`MYBR|DGE / VESPΣR / CHR0N0SV3RS`) :
 
 ```css
---bg-app: #f6f7fa;
---bg-card: #ffffff;
---border-card: #e2e5eb;
---text-primary: #12151c;
---text-secondary: #6b7280;
---accent-blue: #0ea5c4;
+--bg-app: #f3f4f6;          /* Light morning-mist gray */
+--bg-carbon: #f3f4f6;
+--bg-card: #e5e9f0;         /* Sidebars / Cards */
+--bg-panel: #e5e9f0;
+--bg-topbar: #e5e9f0;
+--bg-input: #ffffff;
+
+--text-primary: #1e293b;    /* Text / Active */
+--text-secondary: #64748b;
+--text-inverse: #f3f4f6;
+--text-on-accent: #ffffff;  /* Blanc sur bouton cyan aube */
+
+--accent-blue: #00a3a6;     /* Energetic dawn-cyan */
+--accent-blue-muted: rgba(0, 163, 166, 0.14);
+--accent-blue-border: rgba(0, 163, 166, 0.4);
+--accent-hover: #e0f2fe;    /* Hover matinal bleu ciel */
 --accent-purple: #6d4fd6;
---danger: #d64545;
+--accent-warning: #d97706;
+--danger: #dc2626;
+
+--border-subtle: #d8dee9;   /* Border */
+--border-panel: rgba(0, 163, 166, 0.35);
+
+--icon-tile: #00a3a6;       /* Icônes de tuiles en cyan aube */
+--tab-active-bg: #ffffff;   /* Onglet actif lumineux */
+--breadcrumb-bg: rgba(229, 233, 240, 0.75);
 ```
+
+---
+
+## Sélecteur et persistance du thème
+
+- **Bouton sélecteur (Topbar)** : pilule interactive ergonomique affichant les icônes Lune 🌙 et Soleil ☀️ avec curseur mobile animé.
+- **Attribut HTML** : appliqué sur `document.documentElement` via `data-theme="dawn"` (ou `data-theme="dark"`).
+- **Persistance** : mémorisée dans `localStorage` sous la clé `mybridge_theme`.
 
 ---
 
@@ -53,49 +105,40 @@ Repris de Chr0nosV3rs, à activer si/quand MyBr|dge reçoit un sélecteur de th�
 
 Élément distinctif de MyBr|dge dans l'écosystème : un fond avec texture fine en motif tissé diagonal ("carbone"), discret, en arrière-plan de la zone de contenu principale.
 
+- En thème Sombre : trame cyan `#54d6ff` à opacité `0.14`.
+- En thème Aube : trame cyan énergique `#00a3a6` à opacité subtile `0.04`.
+
 ```css
-background-color: #0a0d14;
-background-image: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%2354d6ff' fill-opacity='0.5' fill-rule='evenodd'%3E%3Cpath d='M5 0h1L0 6V5zM6 5v1H5z'/%3E%3C/g%3E%3C/svg%3E");
+background-image: var(--carbon-pattern);
 ```
-
-Source : pattern généré via Hero Patterns (heropatterns.com), motif "Diagonal Stripes", couleur alignée sur `--accent-blue`.
-
-À valider visuellement en contexte réel (dans l'app, pas seulement l'aperçu du générateur) avant de verrouiller l'opacité finale.
 
 ---
 
 ## Icônes
 
-MyBr|dge utilise la librairie d'icônes SVG partagée de l'écosystème (stockée dans le repo VespΣr) :
+MyBr|dge utilise la librairie d'icônes SVG de l'écosystème :
 
 ```txt
 Style : trait (stroke), pas de remplissage plein
 viewBox : 0 0 24 24
-Couleur : currentColor (suit le texte/thème actif automatiquement)
+Couleur : currentColor ou variable dédiée (--icon-tile / --accent-blue)
 ```
 
-Icône d'identité de MyBr|dge dans le système : **pont suspendu** (`bridge.svg`), cohérente avec le pattern nom→icône déjà en place (sablier = Chr0nosV3rs, étoile = VespΣr, lune = LunarMood).
-
-Toute nouvelle icône créée pour MyBr|dge doit suivre les mêmes conventions (voir governance.md — pas de duplication, mettre à jour la librairie partagée plutôt que d'en créer une locale).
+Icône d'identité de MyBr|dge dans le système : **pont suspendu** (`bridge.svg`), alignée avec le pattern nom→icône :
+- Chr0nosV3rs = sablier
+- VespΣr = étoile
+- MyBr|dge = pont suspendu
 
 ---
 
-## Fichiers concernés (à créer une fois le code démarré)
+## Fichiers concernés
 
 ```txt
-src/theme/config.ts
-src/theme/design_tokens.ts
-src/theme/UI_TERMS.ts
-src/App.css
-```
-
-Mêmes rôles que dans Chr0nosV3rs :
-
-```txt
-config.ts          → flags / configuration simple
-design_tokens.ts    → couleurs, espacements, tailles (miroir TS des variables CSS)
-UI_TERMS.ts         → textes visibles réutilisés
-App.css             → variables CSS globales + styles globaux
+src/theme/config.ts          → flags / configuration (enableDawnThemeV2: true, themeStorageKey)
+src/theme/design_tokens.ts   → tokens TS miroirs DARK_THEME_TOKENS & DAWN_THEME_TOKENS
+src/theme/UI_TERMS.ts        → textes visibles réutilisés
+src/App.css                  → variables CSS globales (:root & [data-theme="dawn"])
+src/screens/Explorer/components/Topbar/Topbar.tsx & Topbar.css → pilule de bascule de thème
 ```
 
 ---
@@ -103,34 +146,19 @@ App.css             → variables CSS globales + styles globaux
 ## Règles strictes
 
 ### Règle 1
-
-Les couleurs de base restent cohérentes avec Chr0nosV3rs et VespΣr — pas de palette isolée qui romprait l'identité de l'écosystème.
+Les couleurs de base restent cohérentes avec Chr0nosV3rs et VespΣr — pas de palette isolée.
 
 ### Règle 2
-
-La touche distinctive de MyBr|dge (fond texturé) reste subtile — jamais au point de nuire à la lisibilité du contenu affiché par-dessus.
+La touche distinctive de MyBr|dge (fond texturé carbone) reste subtile — jamais au point de nuire à la lisibilité du contenu affiché par-dessus.
 
 ### Règle 3
-
-Les icônes viennent de la librairie partagée — jamais dupliquées ou recréées localement dans MyBr|dge.
+Les icônes viennent de la charte partagée — toujours adaptées à la lisibilité du thème courant via `currentColor` ou tokens dédiés.
 
 ### Règle 4
-
-Le thème Aube reste V2+ — pas de sélecteur de thème requis au MVP.
+Le thème Aube respecte scrupuleusement la palette "Brume Matinale" (#F3F4F6, #E5E9F0, #00A3A6, #D8DEE9, #1E293B, #E0F2FE).
 
 ### Règle 5
-
-Aucune couleur codée en dur dans un composant — toujours via les tokens.
-
----
-
-## À éviter
-
-```txt
-une palette de couleurs propre à MyBr|dge qui ignore l'écosystème
-un fond texturé trop opaque/dominant qui nuit à la lecture des fichiers/dossiers
-une icône dupliquée localement au lieu d'être ajoutée à la librairie partagée
-```
+Aucune couleur codée en dur dans un composant — toujours via les tokens de variables CSS.
 
 ---
 
@@ -138,6 +166,6 @@ une icône dupliquée localement au lieu d'être ajoutée à la librairie partag
 
 ```txt
 Même base que l'écosystème.
+Sombre par défaut, Aube (Brume Matinale) en un clic.
 Le carbone est la touche propre à MyBr|dge.
-Les icônes sont partagées, jamais dupliquées.
 ```
