@@ -3,7 +3,7 @@
 .context-menu {
   position: fixed;
   z-index: 1000;
-  width: 175px;
+  width: 220px;
   background-color: var(--popover-bg);
   backdrop-filter: blur(14px);
   border: 1px solid var(--border-panel);
@@ -73,6 +73,11 @@
 
 .context-menu__item:hover:not(:disabled) {
   background-color: var(--accent-hover);
+  color: var(--accent-blue);
+}
+
+.context-menu__item--accent {
+  font-weight: 600;
   color: var(--accent-blue);
 }
 

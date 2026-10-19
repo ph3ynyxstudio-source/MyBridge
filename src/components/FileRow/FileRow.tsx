@@ -8,6 +8,7 @@ export interface FileRowProps {
   isExpanded?: boolean;
   isActive?: boolean;
   onClick?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export const FileRow: React.FC<FileRowProps> = ({
@@ -17,6 +18,7 @@ export const FileRow: React.FC<FileRowProps> = ({
   isExpanded = false,
   isActive = false,
   onClick,
+  onContextMenu,
 }) => {
   return (
     <button
@@ -30,6 +32,7 @@ export const FileRow: React.FC<FileRowProps> = ({
         .join(" ")}
       style={{ paddingLeft: `${12 + depth * 14}px` }}
       onClick={onClick}
+      onContextMenu={onContextMenu}
     >
       {isFolder && (
         <span className="file-row__chevron" aria-hidden="true">

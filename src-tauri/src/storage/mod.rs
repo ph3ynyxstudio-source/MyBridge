@@ -461,6 +461,85 @@ pub fn open_file_in_system(
     Ok(())
 }
 
+/// Résout et renvoie le chemin absolu d'un fichier du coffre sur le disque hôte.
+#[tauri::command]
+pub fn get_file_absolute_path(
+    app: AppHandle,
+    project_name: String,
+    subpath: String,
+) -> Result<String, String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+    let valid_project = validate_single_name(&project_name, "project_name")?;
+    let valid_subpath = validate_relative_subpath(Some(subpath))?;
+
+    if valid_subpath.as_os_str().is_empty() {
+        return Err("Le sous-chemin du fichier ne peut pas être vide.".to_string());
+    }
+
+    let project_root = projects_dir.join(&valid_project);
+    if !project_root.exists() || !project_root.is_dir() {
+        return Err(format!(
+            "Le projet '{}' est introuvable dans projects/.",
+            valid_project
+        ));
+    }
+
+    let file_path = project_root.join(&valid_subpath);
+    if !file_path.exists() {
+        return Err(format!(
+            "Le fichier est introuvable sur le disque : {:?}",
+            file_path
+        ));
+    }
+
+    Ok(file_path.to_string_lossy().to_string())
+}
+
+/// Lit le contenu texte d'un fichier (ex: .txt, .md, .svg) dans la limite de 5 Mo.
+#[tauri::command]
+pub fn read_file_text(
+    app: AppHandle,
+    project_name: String,
+    subpath: String,
+) -> Result<String, String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+    let valid_project = validate_single_name(&project_name, "project_name")?;
+    let valid_subpath = validate_relative_subpath(Some(subpath))?;
+
+    if valid_subpath.as_os_str().is_empty() {
+        return Err("Le sous-chemin du fichier ne peut pas être vide.".to_string());
+    }
+
+    let project_root = projects_dir.join(&valid_project);
+    if !project_root.exists() || !project_root.is_dir() {
+        return Err(format!(
+            "Le projet '{}' est introuvable dans projects/.",
+            valid_project
+        ));
+    }
+
+    let file_path = project_root.join(&valid_subpath);
+    if !file_path.exists() {
+        return Err(format!(
+            "Le fichier est introuvable sur le disque : {:?}",
+            file_path
+        ));
+    }
+
+    if file_path.is_dir() {
+        return Err("La cible est un dossier, impossible de lire son contenu texte.".to_string());
+    }
+
+    let metadata = fs::metadata(&file_path)
+        .map_err(|e| format!("Impossible de lire les métadonnées : {}", e))?;
+    if metadata.len() > 5 * 1024 * 1024 {
+        return Err("Le fichier est trop volumineux pour être prévisualisé en texte (> 5 Mo).".to_string());
+    }
+
+    fs::read_to_string(&file_path)
+        .map_err(|e| format!("Impossible de lire le contenu texte du fichier (UTF-8 requis) : {}", e))
+}
+
 /// Déplace un élément d'un projet vers la corbeille (`app_data_dir/trash/`) avec horodatage.
 #[tauri::command]
 pub fn move_to_trash(

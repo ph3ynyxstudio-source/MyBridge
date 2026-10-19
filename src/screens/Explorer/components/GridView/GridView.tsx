@@ -1,6 +1,7 @@
 import React from "react";
 import { FolderCard, TileKind } from "../../../../components/FolderCard/FolderCard";
 import { Breadcrumb } from "../Breadcrumb/Breadcrumb";
+import { PreviewDrawer, PreviewFile } from "../PreviewDrawer/PreviewDrawer";
 import { UI_TERMS } from "../../../../theme/UI_TERMS";
 import "./GridView.css";
 
@@ -38,6 +39,7 @@ export interface GridViewProps {
   secondaryPathLabel?: string;
   onResetSecondarySubpath?: () => void;
   onNavigateSecondaryBreadcrumb?: (targetSubpath?: string) => void;
+  onCloseSecondary?: () => void;
   secondaryEntries?: GridEntry[];
   selectedSecondaryEntryId?: string;
   onSelectSecondaryEntry?: (entry: GridEntry) => void;
@@ -48,6 +50,11 @@ export interface GridViewProps {
   onSecondaryDragStart?: (e: React.DragEvent, entry: GridEntry) => void;
   onSecondaryDropOnFolder?: (e: React.DragEvent, targetFolderEntry: GridEntry) => void;
   onDropOnSecondaryBreadcrumb?: (e: React.DragEvent, targetSubpath?: string) => void;
+
+  // Visualiseur bivalent (PreviewDrawer)
+  previewFile?: PreviewFile | null;
+  onClosePreview?: () => void;
+  onOpenInSystem?: (project: string, subpath: string) => void;
 }
 
 export const GridView: React.FC<GridViewProps> = ({
@@ -73,6 +80,7 @@ export const GridView: React.FC<GridViewProps> = ({
   secondaryPathLabel,
   onResetSecondarySubpath,
   onNavigateSecondaryBreadcrumb,
+  onCloseSecondary,
   secondaryEntries = [],
   selectedSecondaryEntryId = "",
   onSelectSecondaryEntry,
@@ -83,12 +91,17 @@ export const GridView: React.FC<GridViewProps> = ({
   onSecondaryDragStart,
   onSecondaryDropOnFolder,
   onDropOnSecondaryBreadcrumb,
+  previewFile,
+  onClosePreview,
+  onOpenInSystem,
 }) => {
+  const isRightPanelOpen = Boolean(previewFile || isSplitViewActive);
+
   return (
-    <section className={`grid-view ${isSplitViewActive ? "grid-view--split-active" : ""}`}>
+    <section className={`grid-view ${isRightPanelOpen ? "grid-view--split-active" : ""}`}>
       {/* PANNEAU PRINCIPAL (PROJET 1) */}
       <div
-        className={`grid-view__primary ${isSplitViewActive ? "grid-view__primary--split" : ""}`}
+        className={`grid-view__primary ${isRightPanelOpen ? "grid-view__primary--split" : ""}`}
         onContextMenu={(e) => {
           if (onContextMenuGrid) {
             e.preventDefault();
@@ -108,67 +121,80 @@ export const GridView: React.FC<GridViewProps> = ({
         ) : (
           <>
             {/* Fil d'Ariane de navigation dans le projet principal */}
-            {activeProject && (
-              <Breadcrumb
-                projectName={activeProject}
-                subpath={currentPathLabel}
-                onNavigate={(target) => {
-                  if (onNavigateBreadcrumb) onNavigateBreadcrumb(target);
-                }}
-                onDropOnSegment={onDropOnBreadcrumb}
-              />
-            )}
+            <Breadcrumb
+              projectName={activeProject || ""}
+              subpath={currentPathLabel}
+              onNavigate={onNavigateBreadcrumb || (() => {})}
+              onDropOnSegment={onDropOnBreadcrumb}
+            />
 
-            {entries.length === 0 && (
+            {/* Contenu du répertoire : Tuiles de dossiers, fichiers et tuile d'action (+) */}
+            {entries.length === 0 ? (
               <div className="grid-view__empty-banner">
-                <h3 className="grid-view__empty-title">
+                <h4 className="grid-view__empty-title">
                   {UI_TERMS.gridView.emptyProjectTitle}
-                </h3>
+                </h4>
                 <p className="grid-view__empty-subtitle">
                   {UI_TERMS.gridView.emptyProjectSubtitle}
                 </p>
               </div>
-            )}
+            ) : (
+              <div className="grid-view__tiles">
+                {entries.map((entry) => {
+                  const isSelected = entry.id === selectedEntryId;
+                  return (
+                    <FolderCard
+                      key={entry.id}
+                      label={entry.label}
+                      kind={entry.kind}
+                      selected={isSelected}
+                      onClick={() => onSelectEntry(entry)}
+                      onDoubleClick={() => {
+                        if (entry.isFolder) {
+                          onOpenFolderEntry?.(entry);
+                        } else {
+                          onOpenFileEntry?.(entry);
+                        }
+                      }}
+                      draggable={true}
+                      onDragStart={(e) => onDragStart?.(e, entry)}
+                      onDrop={(e) => {
+                        if (entry.isFolder && onDropOnFolder) {
+                          onDropOnFolder(e, entry);
+                        }
+                      }}
+                      onContextMenu={(e) => {
+                        if (onContextMenuCard) {
+                          e.preventDefault();
+                          onContextMenuCard(e, entry);
+                        }
+                      }}
+                    />
+                  );
+                })}
 
-            <div className="grid-view__tiles">
-              {entries.map((entry) => (
+                {/* Tuile d'action « add folder/Files » alignée dans la grille */}
                 <FolderCard
-                  key={entry.id}
-                  label={entry.label}
-                  kind={entry.kind}
-                  selected={entry.id === selectedEntryId}
-                  onClick={() => onSelectEntry(entry)}
-                  onDoubleClick={() => {
-                    if (entry.isFolder) {
-                      if (onOpenFolderEntry) onOpenFolderEntry(entry);
-                    } else {
-                      if (onOpenFileEntry) onOpenFileEntry(entry);
-                    }
-                  }}
-                  draggable={true}
-                  onDragStart={(e) => onDragStart?.(e, entry)}
-                  onDrop={(e) => {
-                    if (entry.isFolder && onDropOnFolder) {
-                      onDropOnFolder(e, entry);
-                    }
-                  }}
-                  onContextMenu={(e) => onContextMenuCard?.(e, entry)}
+                  label={UI_TERMS.gridView.addTileLabel}
+                  kind="add"
+                  selected={false}
+                  onClick={onAddFolderOrFiles}
+                  onDoubleClick={onAddFolderOrFiles}
                 />
-              ))}
-
-              {/* Tuile "+ add folder/Files" intégrée directement à la grille */}
-              <FolderCard
-                label={UI_TERMS.gridView.addTileLabel}
-                kind="add"
-                onClick={onAddFolderOrFiles}
-              />
-            </div>
+              </div>
+            )}
           </>
         )}
       </div>
 
-      {/* SECOND PANNEAU (SPLIT-VIEW : PROJET 2 DISTINCT) */}
-      {isSplitViewActive && (
+      {/* PANNEAU DROIT BIVALENT : Visualiseur OU Explorateur secondaire */}
+      {previewFile ? (
+        <PreviewDrawer
+          file={previewFile}
+          onClose={onClosePreview || (() => {})}
+          onOpenInSystem={onOpenInSystem || (() => {})}
+        />
+      ) : isSplitViewActive ? (
         <aside
           className="grid-view__secondary"
           onContextMenu={(e) => {
@@ -203,16 +229,29 @@ export const GridView: React.FC<GridViewProps> = ({
               )}
             </div>
 
-            {secondaryPathLabel && onResetSecondarySubpath && (
-              <button
-                type="button"
-                className="grid-view__secondary-back-btn"
-                onClick={onResetSecondarySubpath}
-                title="Retour à la racine du second projet"
-              >
-                ← Racine
-              </button>
-            )}
+            <div className="grid-view__secondary-actions">
+              {secondaryPathLabel && onResetSecondarySubpath && (
+                <button
+                  type="button"
+                  className="grid-view__secondary-back-btn"
+                  onClick={onResetSecondarySubpath}
+                  title="Retour à la racine du second projet"
+                >
+                  ← Racine
+                </button>
+              )}
+              {onCloseSecondary && (
+                <button
+                  type="button"
+                  className="grid-view__secondary-close-btn"
+                  onClick={onCloseSecondary}
+                  title="Fermer le panneau secondaire"
+                  aria-label="Fermer le panneau secondaire"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Fil d'Ariane du second projet */}
@@ -281,7 +320,7 @@ export const GridView: React.FC<GridViewProps> = ({
             </div>
           )}
         </aside>
-      )}
+      ) : null}
     </section>
   );
 };

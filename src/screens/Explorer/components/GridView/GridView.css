@@ -160,6 +160,32 @@
   background-color: var(--accent-blue-muted);
 }
 
+.grid-view__secondary-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.grid-view__secondary-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.grid-view__secondary-close-btn:hover {
+  background-color: var(--accent-hover);
+  color: var(--text-primary);
+}
+
 .grid-view__secondary-tiles {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));

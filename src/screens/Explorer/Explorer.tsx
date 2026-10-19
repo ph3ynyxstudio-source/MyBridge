@@ -17,6 +17,11 @@ import {
 } from "../../services/storageService";
 import { APP_CONFIG, TreePanelSize } from "../../theme/config";
 import { ThemeMode } from "../../theme/design_tokens";
+import {
+  NavigationMode,
+  loadSavedNavigationMode,
+  saveNavigationMode,
+} from "../../theme/navigationMode";
 import { Topbar } from "./components/Topbar/Topbar";
 import { TreePanel, ProjectTreeNode } from "./components/TreePanel/TreePanel";
 import { GridView, GridEntry } from "./components/GridView/GridView";
@@ -28,6 +33,7 @@ import {
 import { EcosystemSidebar } from "./components/EcosystemSidebar/EcosystemSidebar";
 import { ContextMenu } from "./components/ContextMenu/ContextMenu";
 import { TrashDrawer } from "./components/TrashDrawer/TrashDrawer";
+import { PreviewFile } from "./components/PreviewDrawer/PreviewDrawer";
 import "./Explorer.css";
 
 const IMAGE_EXTENSIONS = new Set([
@@ -39,6 +45,32 @@ const IMAGE_EXTENSIONS = new Set([
   "gif",
   "bmp",
   "ico",
+]);
+
+const PREVIEWABLE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "svg",
+  "webp",
+  "gif",
+  "bmp",
+  "ico",
+  "txt",
+  "md",
+  "log",
+  "json",
+  "toml",
+  "yaml",
+  "yml",
+  "rs",
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "css",
+  "html",
+  "pdf",
 ]);
 
 function resolveTileKind(folder: ProjectFolder): TileKind {
@@ -121,6 +153,34 @@ export const Explorer: React.FC = () => {
 
   const handleToggleTheme = useCallback(() => {
     setTheme((prev) => (prev === "dark" ? "dawn" : "dark"));
+  }, []);
+
+  // Interception globale du menu contextuel Chromium / WebView2
+  useEffect(() => {
+    const handleGlobalContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("contextmenu", handleGlobalContextMenu);
+    return () => {
+      window.removeEventListener("contextmenu", handleGlobalContextMenu);
+    };
+  }, []);
+
+  // Mode de navigation : 'split-folder' (défaut) ou 'preview-focus'
+  const [navigationMode, setNavigationMode] = useState<NavigationMode>(() => {
+    return loadSavedNavigationMode();
+  });
+
+  const handleToggleNavigationMode = useCallback((mode: NavigationMode) => {
+    setNavigationMode(mode);
+    saveNavigationMode(mode);
+  }, []);
+
+  // Fichier en cours de prévisualisation dans le panneau droit (Visualiseur)
+  const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
+
+  const handleClosePreview = useCallback(() => {
+    setPreviewFile(null);
   }, []);
 
   // Presse-papier virtuel pour Copier / Couper / Coller
@@ -395,22 +455,11 @@ export const Explorer: React.FC = () => {
   }, [secondaryContents]);
 
   /**
-   * Bascule du mode Split-View (1 projet vs 2 projets simultanés).
+   * Fermeture du panneau secondaire Split-View.
    */
-  const handleToggleSplitView = (active: boolean) => {
-    setIsSplitViewActive(active);
-    if (active) {
-      const projToLoad =
-        secondaryProject ||
-        projects.find((p) => p !== activeProject) ||
-        projects[0] ||
-        "";
-      if (projToLoad) {
-        setSecondaryProject(projToLoad);
-        void loadSecondaryProjectFolder(projToLoad, secondarySubpath);
-      }
-    }
-  };
+  const handleCloseSecondary = useCallback(() => {
+    setIsSplitViewActive(false);
+  }, []);
 
   /**
    * Sélection d'un projet pour le volet Split-View secondaire.
@@ -544,11 +593,35 @@ export const Explorer: React.FC = () => {
   };
 
   /**
-   * Double-clic sur un dossier de la grille : entre dans ce sous-dossier.
+   * Vérifie si un fichier dispose d'une extension prise en charge par le visualiseur (PreviewDrawer).
+   */
+  const isPreviewableFile = (filename: string): boolean => {
+    const dotIdx = filename.lastIndexOf(".");
+    if (dotIdx > 0) {
+      const ext = filename.slice(dotIdx + 1).toLowerCase();
+      return PREVIEWABLE_EXTENSIONS.has(ext);
+    }
+    return false;
+  };
+
+  /**
+   * Double-clic sur un dossier de la grille centrale :
+   * - Si navigationMode === 'split-folder' : le panneau central reste au niveau actuel,
+   *   le panneau droit s'ouvre et charge l'arborescence et le contenu du sous-dossier double-cliqué.
+   * - Si navigationMode === 'preview-focus' : navigation normale au sein du panneau central.
    */
   const handleOpenFolderEntry = (entry: GridEntry) => {
     if (!activeProject || !entry.isFolder) return;
-    navigateTo(activeProject, entry.id);
+
+    if (navigationMode === "split-folder") {
+      setPreviewFile(null);
+      setIsSplitViewActive(true);
+      setSecondaryProject(activeProject);
+      setSecondarySubpath(entry.id);
+      void loadSecondaryProjectFolder(activeProject, entry.id);
+    } else {
+      navigateTo(activeProject, entry.id);
+    }
   };
 
   /**
@@ -560,18 +633,31 @@ export const Explorer: React.FC = () => {
   };
 
   /**
-   * Double-clic sur un fichier de la grille : ouverture dans l'application par défaut de Windows.
+   * Double-clic sur un fichier de la grille centrale :
+   * - Si fichier pris en charge (.png, .jpg, .svg, .txt, .md, .pdf, etc.) :
+   *   ouvre le panneau droit en mode Visualiseur (PreviewDrawer).
+   * - Sinon : ouverture directe dans l'application système par défaut (Windows).
    */
   const handleOpenFileEntry = async (entry: GridEntry) => {
     if (!activeProject || entry.isFolder) return;
-    try {
-      await openFileInSystem(activeProject, entry.id);
-    } catch (err: unknown) {
-      const errorMsg = typeof err === "string" ? err : String(err);
-      console.error(
-        `[Explorer] Erreur lors de l'ouverture du fichier '${entry.label}' :`,
-        errorMsg
-      );
+
+    if (isPreviewableFile(entry.label)) {
+      setIsSplitViewActive(false);
+      setPreviewFile({
+        project: activeProject,
+        subpath: entry.id,
+        label: entry.label,
+      });
+    } else {
+      try {
+        await openFileInSystem(activeProject, entry.id);
+      } catch (err: unknown) {
+        const errorMsg = typeof err === "string" ? err : String(err);
+        console.error(
+          `[Explorer] Erreur lors de l'ouverture du fichier '${entry.label}' :`,
+          errorMsg
+        );
+      }
     }
   };
 
@@ -585,18 +671,30 @@ export const Explorer: React.FC = () => {
   };
 
   /**
-   * Double-clic sur un fichier du second volet : ouverture dans le système hôte.
+   * Double-clic sur un fichier du second volet :
+   * - Si pris en charge : bascule vers le visualiseur.
+   * - Sinon : ouverture dans le système hôte Windows.
    */
   const handleOpenSecondaryFileEntry = async (entry: GridEntry) => {
     if (!secondaryProject || entry.isFolder) return;
-    try {
-      await openFileInSystem(secondaryProject, entry.id);
-    } catch (err: unknown) {
-      const errorMsg = typeof err === "string" ? err : String(err);
-      console.error(
-        `[Explorer] Erreur ouverture fichier second volet '${entry.label}' :`,
-        errorMsg
-      );
+
+    if (isPreviewableFile(entry.label)) {
+      setIsSplitViewActive(false);
+      setPreviewFile({
+        project: secondaryProject,
+        subpath: entry.id,
+        label: entry.label,
+      });
+    } else {
+      try {
+        await openFileInSystem(secondaryProject, entry.id);
+      } catch (err: unknown) {
+        const errorMsg = typeof err === "string" ? err : String(err);
+        console.error(
+          `[Explorer] Erreur ouverture fichier second volet '${entry.label}' :`,
+          errorMsg
+        );
+      }
     }
   };
 
@@ -692,6 +790,58 @@ export const Explorer: React.FC = () => {
   };
 
   /**
+   * Clic droit sur un projet dans l'arborescence latérale gauche (`TreePanel`).
+   */
+  const handleContextMenuProject = (e: React.MouseEvent, projectName: string) => {
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      targetEntry: {
+        id: "",
+        label: projectName,
+        kind: "folder",
+        isFolder: true,
+      },
+      targetProject: projectName,
+      targetSubpath: undefined,
+    });
+  };
+
+  /**
+   * Clic droit sur un sous-dossier dans l'arborescence latérale gauche (`TreePanel`).
+   */
+  const handleContextMenuFolder = (
+    e: React.MouseEvent,
+    projectName: string,
+    folderName: string
+  ) => {
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      targetEntry: {
+        id: folderName,
+        label: folderName,
+        kind: "folder",
+        isFolder: true,
+      },
+      targetProject: projectName,
+      targetSubpath: folderName,
+    });
+  };
+
+  /**
+   * Clic droit sur le fond de l'arborescence latérale gauche (`TreePanel`).
+   */
+  const handleContextMenuTreeBg = (e: React.MouseEvent) => {
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      targetProject: activeProject,
+      targetSubpath: currentSubpath,
+    });
+  };
+
+  /**
    * Ouverture du menu contextuel sur le fond de la grille.
    */
   const handleOpenGridContextMenu = (
@@ -708,10 +858,53 @@ export const Explorer: React.FC = () => {
   };
 
   /**
+   * Action contextuelle : Ouvrir le projet ou sous-dossier dans le panneau secondaire.
+   */
+  const handleOpenInSecondary = () => {
+    if (!contextMenu?.targetEntry) return;
+    const { targetProject, targetEntry } = contextMenu;
+    setPreviewFile(null);
+    setIsSplitViewActive(true);
+    setSecondaryProject(targetProject);
+    setSecondarySubpath(targetEntry.id || undefined);
+    void loadSecondaryProjectFolder(targetProject, targetEntry.id || undefined);
+  };
+
+  /**
+   * Action contextuelle : Aperçu / Visualiser le fichier dans le panneau droit.
+   */
+  const handlePreviewContextMenu = () => {
+    if (!contextMenu?.targetEntry || contextMenu.targetEntry.isFolder) return;
+    const { targetProject, targetEntry } = contextMenu;
+    setIsSplitViewActive(false);
+    setPreviewFile({
+      project: targetProject,
+      subpath: targetEntry.id,
+      label: targetEntry.label,
+    });
+  };
+
+  /**
+   * Action contextuelle : Ouvrir le fichier dans l'application par défaut de Windows.
+   */
+  const handleOpenInSystemContextMenu = async () => {
+    if (!contextMenu?.targetEntry || contextMenu.targetEntry.isFolder) return;
+    const { targetProject, targetEntry } = contextMenu;
+    try {
+      await openFileInSystem(targetProject, targetEntry.id);
+    } catch (err: unknown) {
+      console.error(
+        `[Explorer] Erreur lors de l'ouverture système de '${targetEntry.label}' :`,
+        err
+      );
+    }
+  };
+
+  /**
    * Copier l'élément ciblé vers le presse-papier virtuel.
    */
   const handleCopy = () => {
-    if (!contextMenu?.targetEntry) return;
+    if (!contextMenu?.targetEntry || !contextMenu.targetEntry.id) return;
     setClipboard({
       op: "copy",
       project: contextMenu.targetProject,
@@ -724,7 +917,7 @@ export const Explorer: React.FC = () => {
    * Couper l'élément ciblé vers le presse-papier virtuel.
    */
   const handleCut = () => {
-    if (!contextMenu?.targetEntry) return;
+    if (!contextMenu?.targetEntry || !contextMenu.targetEntry.id) return;
     setClipboard({
       op: "cut",
       project: contextMenu.targetProject,
@@ -779,7 +972,7 @@ export const Explorer: React.FC = () => {
   ) => {
     const entry = targetEntry || contextMenu?.targetEntry;
     const proj = targetProject || contextMenu?.targetProject || activeProject;
-    if (!entry || !proj) return;
+    if (!entry || !proj || !entry.id) return;
 
     try {
       await moveToTrash(proj, entry.id);
@@ -951,8 +1144,11 @@ export const Explorer: React.FC = () => {
           activeProject={activeProject}
           activeFolder={currentSubpath || selectedEntryId}
           onSelectFolder={handleSelectFolderFromTree}
-          isSplitViewActive={isSplitViewActive}
-          onToggleSplitView={handleToggleSplitView}
+          navigationMode={navigationMode}
+          onToggleNavigationMode={handleToggleNavigationMode}
+          onContextMenuProject={handleContextMenuProject}
+          onContextMenuFolder={handleContextMenuFolder}
+          onContextMenuTreeBg={handleContextMenuTreeBg}
         />
 
         <GridView
@@ -1006,6 +1202,12 @@ export const Explorer: React.FC = () => {
           onDropOnSecondaryBreadcrumb={(e, targetSubpath) =>
             handleDropOnBreadcrumb(e, targetSubpath, secondaryProject)
           }
+          previewFile={previewFile}
+          onClosePreview={handleClosePreview}
+          onCloseSecondary={handleCloseSecondary}
+          onOpenInSystem={(project, subpath) => {
+            void openFileInSystem(project, subpath);
+          }}
         />
 
         <EcosystemSidebar
@@ -1041,6 +1243,19 @@ export const Explorer: React.FC = () => {
           onDelete={() => void handleDeleteToTrash()}
           onRefresh={handleRefreshAll}
           onClose={() => setContextMenu(null)}
+          onOpenInSecondary={handleOpenInSecondary}
+          onPreview={
+            contextMenu.targetEntry &&
+            !contextMenu.targetEntry.isFolder &&
+            isPreviewableFile(contextMenu.targetEntry.label)
+              ? handlePreviewContextMenu
+              : undefined
+          }
+          onOpenInSystem={
+            contextMenu.targetEntry && !contextMenu.targetEntry.isFolder
+              ? handleOpenInSystemContextMenu
+              : undefined
+          }
         />
       )}
 

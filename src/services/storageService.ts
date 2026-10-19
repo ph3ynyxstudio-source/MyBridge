@@ -156,3 +156,23 @@ export async function getTrashItems(): Promise<InboxItem[]> {
 export async function emptyTrash(): Promise<void> {
   return invoke<void>("empty_trash");
 }
+
+/**
+ * Résout et renvoie le chemin absolu d'un fichier sur le disque local de l'hôte.
+ */
+export async function getFileAbsolutePath(
+  projectName: string,
+  subpath: string
+): Promise<string> {
+  return invoke<string>("get_file_absolute_path", { projectName, subpath });
+}
+
+/**
+ * Lit le contenu texte brut d'un fichier (ex: .txt, .md, .svg) jusqu'à 5 Mo.
+ */
+export async function readFileText(
+  projectName: string,
+  subpath: string
+): Promise<string> {
+  return invoke<string>("read_file_text", { projectName, subpath });
+}
