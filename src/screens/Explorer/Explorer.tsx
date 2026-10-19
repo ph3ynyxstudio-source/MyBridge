@@ -3,6 +3,7 @@ import { TileKind } from "../../components/FolderCard/FolderCard";
 import {
   copyItem,
   createProject,
+  deleteProject,
   emptyTrash,
   getInboxItems,
   getTrashItems,
@@ -14,6 +15,7 @@ import {
   openFileInSystem,
   ProjectFolder,
   readProjectContents,
+  renameProject,
 } from "../../services/storageService";
 import { APP_CONFIG, TreePanelSize } from "../../theme/config";
 import { ThemeMode } from "../../theme/design_tokens";
@@ -192,6 +194,15 @@ export const Explorer: React.FC = () => {
   // Corbeille locale sécurisée
   const [trashItems, setTrashItems] = useState<InboxItem[]>([]);
   const [isTrashDrawerOpen, setIsTrashDrawerOpen] = useState<boolean>(false);
+
+  // Modale de confirmation de suppression d'un projet (avec avertissement sous-dossiers en archive)
+  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  const [isDeletingProject, setIsDeletingProject] = useState<boolean>(false);
+
+  // Modale de renommage d'un projet
+  const [projectToRename, setProjectToRename] = useState<string | null>(null);
+  const [renameInputValue, setRenameInputValue] = useState<string>("");
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   const [projectSubfoldersMap, setProjectSubfoldersMap] = useState<
     Record<string, string[]>
@@ -772,6 +783,130 @@ export const Explorer: React.FC = () => {
   };
 
   /**
+   * Confirmation de suppression d'un projet :
+   * Déplace l'ensemble du projet (et tous ses sous-dossiers et fichiers) vers la corbeille / archives.
+   */
+  const handleConfirmDeleteProject = async () => {
+    if (!projectToDelete) return;
+    const target = projectToDelete;
+    setIsDeletingProject(true);
+    try {
+      await deleteProject(target);
+      await refreshTrash();
+      setProjectToDelete(null);
+
+      // Si le projet supprimé était épinglé
+      setPinnedProjects((prev) => {
+        const next = prev.filter((p) => p !== target);
+        try {
+          localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+
+      const nextProjects = projects.filter((p) => p !== target);
+      setProjects(nextProjects);
+
+      if (activeProject === target) {
+        const nextActive = nextProjects[0] || "";
+        setActiveProject(nextActive);
+        setCurrentSubpath(undefined);
+        if (nextActive) {
+          void loadProjectFolder(nextActive, undefined);
+        } else {
+          setProjectContents([]);
+        }
+      }
+      if (secondaryProject === target) {
+        const nextSec = nextProjects.find((p) => p !== activeProject) || nextProjects[0] || "";
+        setSecondaryProject(nextSec);
+        setSecondarySubpath(undefined);
+        if (nextSec && isSplitViewActive) {
+          void loadSecondaryProjectFolder(nextSec, undefined);
+        } else {
+          setSecondaryContents([]);
+        }
+      }
+      void refreshProjects();
+    } catch (err: unknown) {
+      console.error(`[Explorer] Erreur lors de la suppression du projet '${target}' :`, err);
+    } finally {
+      setIsDeletingProject(false);
+    }
+  };
+
+  /**
+   * Ouvre la modale de renommage pour un projet sélectionné.
+   */
+  const handleStartRenameProject = (projectName: string) => {
+    setProjectToRename(projectName);
+    setRenameInputValue(projectName);
+    setRenameError(null);
+  };
+
+  /**
+   * Confirmation du renommage d'un projet.
+   */
+  const handleConfirmRenameProject = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!projectToRename) return;
+
+    const oldName = projectToRename;
+    const newName = renameInputValue.trim();
+
+    if (!newName) {
+      setRenameError("Le nom du projet ne peut pas être vide.");
+      return;
+    }
+    if (newName === oldName) {
+      setProjectToRename(null);
+      return;
+    }
+    if (projects.includes(newName)) {
+      setRenameError("Un projet portant ce nom existe déjà.");
+      return;
+    }
+
+    try {
+      await renameProject(oldName, newName);
+
+      // Mise à jour des favoris épinglés
+      setPinnedProjects((prev) => {
+        const next = prev.map((p) => (p === oldName ? newName : p));
+        try {
+          localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+
+      // Mise à jour de l'historique de navigation
+      setNavHistory((prev) =>
+        prev.map((item) =>
+          item.project === oldName ? { ...item, project: newName } : item
+        )
+      );
+
+      // Mise à jour du projet actif / secondaire
+      if (activeProject === oldName) {
+        setActiveProject(newName);
+      }
+      if (secondaryProject === oldName) {
+        setSecondaryProject(newName);
+      }
+
+      setProjectToRename(null);
+      await refreshProjects(newName, currentSubpath);
+    } catch (err: unknown) {
+      const msg = typeof err === "string" ? err : String(err);
+      setRenameError(msg);
+    }
+  };
+
+  /**
    * Ouverture du menu contextuel sur une tuile (carte de fichier ou dossier).
    */
   const handleOpenCardContextMenu = (
@@ -1228,6 +1363,7 @@ export const Explorer: React.FC = () => {
         onClose={() => setIsInboxDrawerOpen(false)}
         onRefreshInbox={refreshInbox}
         onMoveItem={handleMoveInboxItem}
+        onCreateProject={handleCreateProject}
       />
 
       {/* Menu contextuel au clic droit */}
@@ -1256,6 +1392,16 @@ export const Explorer: React.FC = () => {
               ? handleOpenInSystemContextMenu
               : undefined
           }
+          onRenameProject={
+            contextMenu.targetEntry?.isFolder && !contextMenu.targetEntry.id
+              ? () => handleStartRenameProject(contextMenu.targetProject)
+              : undefined
+          }
+          onDeleteProject={
+            contextMenu.targetEntry?.isFolder && !contextMenu.targetEntry.id
+              ? () => setProjectToDelete(contextMenu.targetProject)
+              : undefined
+          }
         />
       )}
 
@@ -1267,6 +1413,126 @@ export const Explorer: React.FC = () => {
         onRefreshTrash={refreshTrash}
         onEmptyTrash={handleEmptyTrash}
       />
+
+      {/* Modale de confirmation : Suppression d'un projet avec avertissement sous-dossiers en archive */}
+      {projectToDelete && (
+        <div
+          className="project-modal-overlay"
+          onClick={() => !isDeletingProject && setProjectToDelete(null)}
+        >
+          <div
+            className="project-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-project-title"
+          >
+            <div className="project-modal__header">
+              <div className="project-modal__icon project-modal__icon--danger">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+              <h3 id="delete-project-title" className="project-modal__title">
+                Supprimer le projet « {projectToDelete} » ?
+              </h3>
+            </div>
+
+            <div className="project-modal__body">
+              <div className="project-modal__warning-box">
+                <p className="project-modal__warning-text">
+                  <strong>Avertissement :</strong> La suppression de ce projet déplacera l’ensemble de ses <strong>sous-dossiers et fichiers</strong> vers la corbeille locale (archives).
+                </p>
+              </div>
+              <p className="project-modal__hint-text">
+                Les éléments resteront consultables et restaurables depuis la corbeille tant que celle-ci n'est pas définitivement vidée.
+              </p>
+            </div>
+
+            <div className="project-modal__footer">
+              <button
+                type="button"
+                className="project-modal__btn project-modal__btn--secondary"
+                onClick={() => setProjectToDelete(null)}
+                disabled={isDeletingProject}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="project-modal__btn project-modal__btn--danger"
+                onClick={handleConfirmDeleteProject}
+                disabled={isDeletingProject}
+              >
+                {isDeletingProject ? "Déplacement..." : "Mettre en archive"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modale de renommage d'un projet */}
+      {projectToRename && (
+        <div
+          className="project-modal-overlay"
+          onClick={() => setProjectToRename(null)}
+        >
+          <div
+            className="project-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rename-project-title"
+          >
+            <form onSubmit={handleConfirmRenameProject}>
+              <div className="project-modal__header">
+                <div className="project-modal__icon project-modal__icon--accent">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </div>
+                <h3 id="rename-project-title" className="project-modal__title">
+                  Renommer le projet « {projectToRename} »
+                </h3>
+              </div>
+
+              <div className="project-modal__body">
+                <label className="project-modal__label">Nouveau nom du projet</label>
+                <input
+                  type="text"
+                  className="project-modal__input"
+                  value={renameInputValue}
+                  onChange={(e) => setRenameInputValue(e.target.value)}
+                  autoFocus
+                  placeholder="Entrez le nouveau nom..."
+                />
+                {renameError && (
+                  <span className="project-modal__error">{renameError}</span>
+                )}
+              </div>
+
+              <div className="project-modal__footer">
+                <button
+                  type="button"
+                  className="project-modal__btn project-modal__btn--secondary"
+                  onClick={() => setProjectToRename(null)}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="project-modal__btn project-modal__btn--primary"
+                >
+                  Renommer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { InboxItem } from "../../../../services/storageService";
-import { UI_TERMS } from "../../../../theme/UI_TERMS";
 import "./InboxDrawer.css";
 
 export interface InboxDrawerProps {
@@ -16,224 +15,514 @@ export interface InboxDrawerProps {
     targetProject: string,
     targetSubpath?: string
   ) => Promise<void>;
+  onCreateProject?: (projectName: string) => Promise<void>;
 }
 
 function formatByteSize(bytes: number, isDir: boolean): string {
-  if (isDir) return UI_TERMS.inboxDrawer.folderBadge;
+  if (isDir) return "Dossier";
   if (bytes < 1024) return `${bytes} B`;
   const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  if (kb < 1024) return `${kb.toFixed(1)} Ko`;
   const mb = kb / 1024;
-  return `${mb.toFixed(1)} MB`;
+  return `${mb.toFixed(1)} Mo`;
+}
+
+function formatTimestamp(sec: number): string {
+  if (!sec) return "";
+  const d = new Date(sec * 1000);
+  return d.toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function getItemIcon(item: InboxItem) {
+  if (item.est_dossier) {
+    return (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="inbox-item__icon inbox-item__icon--folder">
+        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+      </svg>
+    );
+  }
+  const ext = (item.extension || "").toLowerCase();
+  if (["png", "jpg", "jpeg", "webp", "svg", "gif"].includes(ext)) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="inbox-item__icon inbox-item__icon--image">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+        <circle cx="8.5" cy="8.5" r="1.5" />
+        <polyline points="21 15 16 10 5 21" />
+      </svg>
+    );
+  }
+  if (ext === "pdf") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="inbox-item__icon inbox-item__icon--pdf">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="9" y1="13" x2="15" y2="13" />
+        <line x1="9" y1="17" x2="13" y2="17" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="inbox-item__icon inbox-item__icon--doc">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <polyline points="10 9 9 9 8 9" />
+    </svg>
+  );
 }
 
 export const InboxDrawer: React.FC<InboxDrawerProps> = ({
   isOpen,
   items,
   projects,
-  defaultTargetProject,
   availableSubfolders,
   onClose,
   onRefreshInbox,
   onMoveItem,
+  onCreateProject,
 }) => {
-  const [selectedProjects, setSelectedProjects] = useState<Record<string, string>>({});
-  const [selectedSubpaths, setSelectedSubpaths] = useState<Record<string, string>>({});
-  const [movingItemName, setMovingItemName] = useState<string | null>(null);
+  // Sélection multiple des éléments de l'inbox
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [dragOverProject, setDragOverProject] = useState<string | null>(null);
+  const [isMoving, setIsMoving] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Création de nouveau projet inline dans la grille des drop zones
+  const [isCreatingProject, setIsCreatingProject] = useState<boolean>(false);
+  const [newProjectInput, setNewProjectInput] = useState<string>("");
+  const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
+      setSelectedItems(new Set());
       setErrorMsg(null);
+      setSuccessMsg(null);
+      setIsCreatingProject(false);
+      setNewProjectInput("");
+      setCreateError(null);
     }
   }, [isOpen]);
 
-  if (!isOpen) {
-    return null;
-  }
+  // Nettoyer les éléments sélectionnés qui n'existent plus dans items
+  useEffect(() => {
+    const existing = new Set(items.map((i) => i.nom));
+    setSelectedItems((prev) => {
+      const next = new Set<string>();
+      for (const nom of prev) {
+        if (existing.has(nom)) next.add(nom);
+      }
+      return next;
+    });
+  }, [items]);
 
-  const getTargetProjectFor = (itemName: string): string => {
-    const chosen = selectedProjects[itemName];
-    if (chosen && projects.includes(chosen)) {
-      return chosen;
+  const toggleSelectItem = useCallback((nom: string) => {
+    setSelectedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(nom)) {
+        next.delete(nom);
+      } else {
+        next.add(nom);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedItems.size === items.length) {
+      setSelectedItems(new Set());
+    } else {
+      setSelectedItems(new Set(items.map((i) => i.nom)));
     }
-    if (defaultTargetProject && projects.includes(defaultTargetProject)) {
-      return defaultTargetProject;
+  }, [items, selectedItems.size]);
+
+  // Glisser-déposer depuis la liste vers un projet
+  const handleDragStart = (e: React.DragEvent, item: InboxItem) => {
+    let itemsToDrag: string[];
+    if (selectedItems.has(item.nom)) {
+      itemsToDrag = Array.from(selectedItems);
+    } else {
+      itemsToDrag = [item.nom];
+      setSelectedItems(new Set([item.nom]));
     }
-    return projects[0] ?? "";
+
+    const payload = JSON.stringify({
+      source: "inbox",
+      items: itemsToDrag,
+    });
+    e.dataTransfer.setData("application/json", payload);
+    e.dataTransfer.setData("text/plain", payload);
+    e.dataTransfer.effectAllowed = "move";
   };
 
-  const getTargetSubpathFor = (itemName: string): string => {
-    return selectedSubpaths[itemName] ?? "";
-  };
-
-  const handleMove = async (itemName: string) => {
-    const targetProject = getTargetProjectFor(itemName);
-    if (!targetProject) return;
-
-    const targetSubpath = getTargetSubpathFor(itemName);
-    setMovingItemName(itemName);
+  // Dépôt d'éléments sur un projet cible
+  const handleDropOnProject = async (e: React.DragEvent, targetProject: string) => {
+    e.preventDefault();
+    setDragOverProject(null);
     setErrorMsg(null);
+    setSuccessMsg(null);
 
+    let itemsToMove: string[] = [];
+    const raw = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain");
+
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.items)) {
+          itemsToMove = parsed.items;
+        } else if (Array.isArray(parsed)) {
+          itemsToMove = parsed;
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    if (itemsToMove.length === 0 && selectedItems.size > 0) {
+      itemsToMove = Array.from(selectedItems);
+    }
+
+    if (itemsToMove.length === 0) return;
+
+    setIsMoving(true);
     try {
-      await onMoveItem(itemName, targetProject, targetSubpath || undefined);
-    } catch (err) {
+      for (const itemName of itemsToMove) {
+        await onMoveItem(itemName, targetProject, undefined);
+      }
+      setSuccessMsg(
+        `${itemsToMove.length} élément(s) déplacé(s) avec succès dans « ${targetProject} »`
+      );
+      setSelectedItems(new Set());
+      onRefreshInbox();
+    } catch (err: unknown) {
       setErrorMsg(typeof err === "string" ? err : String(err));
     } finally {
-      setMovingItemName(null);
+      setIsMoving(false);
     }
   };
 
+  // Soumission de la création d'un projet inline
+  const handleCreateProjectSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newProjectInput.trim();
+    if (!trimmed) {
+      setCreateError("Le nom du projet ne peut pas être vide.");
+      return;
+    }
+    if (projects.includes(trimmed)) {
+      setCreateError("Un projet portant ce nom existe déjà.");
+      return;
+    }
+    if (!onCreateProject) return;
+
+    try {
+      setCreateError(null);
+      await onCreateProject(trimmed);
+      setNewProjectInput("");
+      setIsCreatingProject(false);
+      setSuccessMsg(`Projet « ${trimmed} » créé avec succès.`);
+    } catch (err: unknown) {
+      setCreateError(typeof err === "string" ? err : String(err));
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const isAllSelected = items.length > 0 && selectedItems.size === items.length;
+
   return (
-    <div className="inbox-drawer-backdrop" onClick={onClose}>
-      <aside
-        className="inbox-drawer"
-        onClick={(e) => e.stopPropagation()}
-        aria-label={UI_TERMS.inboxDrawer.title}
-      >
-        <header className="inbox-drawer__header">
-          <div className="inbox-drawer__title-group">
-            <h2 className="inbox-drawer__title">
-              {UI_TERMS.inboxDrawer.title}
-              {items.length > 0 && (
-                <span className="inbox-drawer__count">{items.length}</span>
-              )}
-            </h2>
-            <p className="inbox-drawer__subtitle">{UI_TERMS.inboxDrawer.subtitle}</p>
-          </div>
-
-          <div className="inbox-drawer__actions">
-            <button
-              type="button"
-              className="inbox-drawer__btn inbox-drawer__btn--ghost"
-              onClick={onRefreshInbox}
-            >
-              {UI_TERMS.inboxDrawer.refresh}
-            </button>
-            <button
-              type="button"
-              className="inbox-drawer__btn inbox-drawer__btn--ghost"
-              onClick={onClose}
-            >
-              {UI_TERMS.inboxDrawer.close}
-            </button>
-          </div>
-        </header>
-
-        {errorMsg && (
-          <div className="inbox-drawer__error" role="alert">
-            {errorMsg}
-          </div>
-        )}
-
-        <div className="inbox-drawer__body">
-          {items.length === 0 ? (
-            <div className="inbox-drawer__empty">
-              <p>{UI_TERMS.inboxDrawer.empty}</p>
+    <div className="inbox-workspace-backdrop" onClick={onClose}>
+      <div className="inbox-workspace" onClick={(e) => e.stopPropagation()}>
+        {/* PANNEAU GAUCHE : VUE EN LISTE AVEC MULTI-SÉLECTION */}
+        <aside className="inbox-workspace__sidebar">
+          <header className="inbox-workspace__header">
+            <div className="inbox-workspace__title-group">
+              <div className="inbox-workspace__title-row">
+                <span className="inbox-workspace__badge-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </span>
+                <h2 className="inbox-workspace__title">Boîte de dépôt</h2>
+                {items.length > 0 && (
+                  <span className="inbox-workspace__count">{items.length}</span>
+                )}
+              </div>
+              <p className="inbox-workspace__subtitle">
+                Glissez les éléments sélectionnés sur un projet cible
+              </p>
             </div>
-          ) : (
-            <ul className="inbox-drawer__list">
-              {items.map((item) => {
-                const targetProject = getTargetProjectFor(item.nom);
-                const targetSubpath = getTargetSubpathFor(item.nom);
-                const subfolders = availableSubfolders[targetProject] ?? [];
-                const isMoving = movingItemName === item.nom;
 
-                return (
-                  <li key={item.nom} className="inbox-drawer__item">
-                    <div className="inbox-drawer__item-info">
-                      <span className="inbox-drawer__item-badge">
-                        {item.est_dossier
-                          ? UI_TERMS.inboxDrawer.folderBadge
-                          : item.extension
-                          ? `.${item.extension}`
-                          : UI_TERMS.inboxDrawer.fileBadge}
-                      </span>
-                      <span className="inbox-drawer__item-name" title={item.nom}>
-                        {item.nom}
-                      </span>
-                      <span className="inbox-drawer__item-size">
-                        {formatByteSize(item.taille, item.est_dossier)}
-                      </span>
-                    </div>
+            <div className="inbox-workspace__header-actions">
+              <button
+                type="button"
+                className="inbox-workspace__btn inbox-workspace__btn--ghost"
+                onClick={onRefreshInbox}
+                title="Actualiser la liste"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 12a9 9 0 0 0-15.5-6.3L3 8" />
+                  <path d="M3 3v5h5" />
+                  <path d="M3 12a9 9 0 0 0 15.5 6.3L21 16" />
+                  <path d="M16 16h5v5" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="inbox-workspace__btn inbox-workspace__btn--close"
+                onClick={onClose}
+                title="Fermer"
+                aria-label="Fermer"
+              >
+                ✕
+              </button>
+            </div>
+          </header>
 
-                    {projects.length === 0 ? (
-                      <p className="inbox-drawer__no-project">
-                        {UI_TERMS.inboxDrawer.noProjectWarning}
-                      </p>
-                    ) : (
-                      <div className="inbox-drawer__controls">
-                        <label className="inbox-drawer__field">
-                          <span className="inbox-drawer__field-label">
-                            {UI_TERMS.inboxDrawer.targetProjectLabel}
-                          </span>
-                          <select
-                            className="inbox-drawer__select"
-                            value={targetProject}
-                            onChange={(e) => {
-                              const nextProj = e.target.value;
-                              setSelectedProjects((prev) => ({
-                                ...prev,
-                                [item.nom]: nextProj,
-                              }));
-                              setSelectedSubpaths((prev) => ({
-                                ...prev,
-                                [item.nom]: "",
-                              }));
-                            }}
-                          >
-                            {projects.map((proj) => (
-                              <option key={proj} value={proj}>
-                                {proj}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        <label className="inbox-drawer__field">
-                          <span className="inbox-drawer__field-label">
-                            {UI_TERMS.inboxDrawer.targetSubpathLabel}
-                          </span>
-                          <select
-                            className="inbox-drawer__select"
-                            value={targetSubpath}
-                            onChange={(e) =>
-                              setSelectedSubpaths((prev) => ({
-                                ...prev,
-                                [item.nom]: e.target.value,
-                              }))
-                            }
-                          >
-                            <option value="">
-                              {UI_TERMS.inboxDrawer.targetSubpathPlaceholder}
-                            </option>
-                            {subfolders.map((sub) => (
-                              <option key={sub} value={sub}>
-                                {sub}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        <button
-                          type="button"
-                          className="inbox-drawer__btn inbox-drawer__btn--primary"
-                          disabled={isMoving || !targetProject}
-                          onClick={() => handleMove(item.nom)}
-                        >
-                          {isMoving
-                            ? UI_TERMS.inboxDrawer.movingButton
-                            : UI_TERMS.inboxDrawer.moveButton}
-                        </button>
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+          {/* Barre d'outils de multi-sélection */}
+          {items.length > 0 && (
+            <div className="inbox-workspace__toolbar">
+              <label className="inbox-workspace__select-all">
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  onChange={toggleSelectAll}
+                />
+                <span>Tout sélectionner</span>
+              </label>
+              {selectedItems.size > 0 && (
+                <div className="inbox-workspace__selection-pill">
+                  {selectedItems.size} sélectionné(s)
+                </div>
+              )}
+            </div>
           )}
-        </div>
-      </aside>
+
+          {errorMsg && (
+            <div className="inbox-workspace__alert inbox-workspace__alert--danger">
+              {errorMsg}
+            </div>
+          )}
+          {successMsg && (
+            <div className="inbox-workspace__alert inbox-workspace__alert--success">
+              {successMsg}
+            </div>
+          )}
+
+          {/* Liste des éléments */}
+          <div className="inbox-workspace__list-container">
+            {items.length === 0 ? (
+              <div className="inbox-workspace__empty">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                  <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                </svg>
+                <h4>Boîte de dépôt vide</h4>
+                <p>Déposez des fichiers dans le dossier 00-Dropbox de votre machine pour les classer ici.</p>
+              </div>
+            ) : (
+              <ul className="inbox-workspace__list">
+                {items.map((item) => {
+                  const isSelected = selectedItems.has(item.nom);
+                  return (
+                    <li
+                      key={item.nom}
+                      className={`inbox-workspace__item ${isSelected ? "inbox-workspace__item--selected" : ""}`}
+                      draggable={true}
+                      onDragStart={(e) => handleDragStart(e, item)}
+                      onClick={() => toggleSelectItem(item.nom)}
+                    >
+                      <div className="inbox-workspace__item-checkbox" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectItem(item.nom)}
+                          aria-label={`Sélectionner ${item.nom}`}
+                        />
+                      </div>
+
+                      <div className="inbox-workspace__item-icon">
+                        {getItemIcon(item)}
+                      </div>
+
+                      <div className="inbox-workspace__item-details">
+                        <span className="inbox-workspace__item-name" title={item.nom}>
+                          {item.nom}
+                        </span>
+                        <div className="inbox-workspace__item-meta">
+                          <span>{formatByteSize(item.taille, item.est_dossier)}</span>
+                          {item.date_modification > 0 && (
+                            <>
+                              <span>•</span>
+                              <span>{formatTimestamp(item.date_modification)}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="inbox-workspace__item-drag-handle" title="Glissez cet élément">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                          <circle cx="9" cy="6" r="1.5" />
+                          <circle cx="15" cy="6" r="1.5" />
+                          <circle cx="9" cy="12" r="1.5" />
+                          <circle cx="15" cy="12" r="1.5" />
+                          <circle cx="9" cy="18" r="1.5" />
+                          <circle cx="15" cy="18" r="1.5" />
+                        </svg>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </aside>
+
+        {/* PANNEAU DROIT : ZONE DE DÉPÔT SUR LES PROJETS (CARRÉS ROUGES) */}
+        <section className="inbox-workspace__canvas">
+          <header className="inbox-workspace__canvas-header">
+            <div>
+              <h3 className="inbox-workspace__canvas-title">Projets de destination</h3>
+              <p className="inbox-workspace__canvas-subtitle">
+                Glissez-déposez vos fichiers sélectionnés directement sur la carte du projet souhaité
+              </p>
+            </div>
+
+            {isMoving ? (
+              <div className="inbox-workspace__drag-notice inbox-workspace__drag-notice--moving">
+                <span>Déplacement en cours...</span>
+              </div>
+            ) : selectedItems.size > 0 ? (
+              <div className="inbox-workspace__drag-notice">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
+                <span><strong>{selectedItems.size}</strong> élément(s) prêt(s) à être glissé(s)</span>
+              </div>
+            ) : null}
+          </header>
+
+          <div className="inbox-workspace__grid">
+            {projects.map((proj) => {
+              const subfolders = availableSubfolders[proj] || [];
+              const isOver = dragOverProject === proj;
+
+              return (
+                <div
+                  key={proj}
+                  className={`inbox-drop-card ${isOver ? "inbox-drop-card--over" : ""} ${isMoving ? "inbox-drop-card--disabled" : ""}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                  }}
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    setDragOverProject(proj);
+                  }}
+                  onDragLeave={(e) => {
+                    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                    setDragOverProject(null);
+                  }}
+                  onDrop={(e) => void handleDropOnProject(e, proj)}
+                >
+                  <div className="inbox-drop-card__icon-wrapper">
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="inbox-drop-card__folder-svg">
+                      <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z" />
+                    </svg>
+                  </div>
+
+                  <div className="inbox-drop-card__content">
+                    <h4 className="inbox-drop-card__name" title={proj}>
+                      {proj}
+                    </h4>
+                    <span className="inbox-drop-card__sub-count">
+                      {subfolders.length > 0
+                        ? `${subfolders.length} sous-dossier(s)`
+                        : "Racine du projet"}
+                    </span>
+                  </div>
+
+                  <div className="inbox-drop-card__zone">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 5v14" />
+                      <path d="M19 12l-7 7-7-7" />
+                    </svg>
+                    <span>{isOver ? `Déposer dans « ${proj} »` : "Déposer les fichiers ici"}</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* CARTE : CRÉER UN NOUVEAU PROJET */}
+            <div className={`inbox-drop-card inbox-drop-card--create ${isCreatingProject ? "inbox-drop-card--creating" : ""}`}>
+              {isCreatingProject ? (
+                <form
+                  className="inbox-drop-card__form"
+                  onSubmit={(e) => void handleCreateProjectSubmit(e)}
+                >
+                  <h4 className="inbox-drop-card__form-title">Nouveau projet</h4>
+                  <input
+                    type="text"
+                    className="inbox-drop-card__input"
+                    placeholder="Nom du projet..."
+                    value={newProjectInput}
+                    onChange={(e) => setNewProjectInput(e.target.value)}
+                    autoFocus
+                  />
+                  {createError && (
+                    <span className="inbox-drop-card__form-error">{createError}</span>
+                  )}
+                  <div className="inbox-drop-card__form-actions">
+                    <button
+                      type="button"
+                      className="inbox-workspace__btn inbox-workspace__btn--ghost"
+                      onClick={() => {
+                        setIsCreatingProject(false);
+                        setNewProjectInput("");
+                        setCreateError(null);
+                      }}
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="submit"
+                      className="inbox-workspace__btn inbox-workspace__btn--primary"
+                    >
+                      Créer
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  className="inbox-drop-card__create-btn"
+                  onClick={() => setIsCreatingProject(true)}
+                  title="Créer un nouveau projet"
+                >
+                  <div className="inbox-drop-card__create-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  </div>
+                  <span className="inbox-drop-card__create-label">Créer un nouveau projet</span>
+                  <span className="inbox-drop-card__create-hint">
+                    Ajoutez un projet pour recevoir des dépôts
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   );
 };

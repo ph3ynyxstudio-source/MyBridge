@@ -15,6 +15,8 @@ export interface ContextMenuProps {
   onOpenInSecondary?: () => void;
   onOpenInSystem?: () => void;
   onPreview?: () => void;
+  onRenameProject?: () => void;
+  onDeleteProject?: () => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -31,6 +33,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onOpenInSecondary,
   onOpenInSystem,
   onPreview,
+  onRenameProject,
+  onDeleteProject,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -56,7 +60,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 
   // Calcul adaptatif des dimensions selon le nombre d'actions
   const menuWidth = 220;
-  const menuHeight = targetEntry ? (targetEntry.isFolder ? 190 : 210) : 95;
+  const menuHeight = targetEntry ? (targetEntry.isFolder ? 220 : 210) : 95;
   const adjustedX = Math.max(10, Math.min(x, window.innerWidth - menuWidth - 10));
   const adjustedY = Math.max(10, Math.min(y, window.innerHeight - menuHeight - 10));
 
@@ -186,7 +190,23 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             </>
           ) : (
             <>
-              <div className="context-menu__divider" />
+              {onRenameProject && (
+                <button
+                  type="button"
+                  className="context-menu__item"
+                  onClick={() => {
+                    onRenameProject();
+                    onClose();
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                  <span>Renommer le projet</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 className="context-menu__item"
@@ -203,6 +223,26 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                 </svg>
                 <span>Actualiser</span>
               </button>
+
+              {onDeleteProject && (
+                <>
+                  <div className="context-menu__divider" />
+                  <button
+                    type="button"
+                    className="context-menu__item context-menu__item--danger"
+                    onClick={() => {
+                      onDeleteProject();
+                      onClose();
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                    <span>Supprimer le projet</span>
+                  </button>
+                </>
+              )}
             </>
           )}
         </>

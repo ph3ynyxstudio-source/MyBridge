@@ -81,6 +81,28 @@ export async function createProject(projectName: string): Promise<string> {
 }
 
 /**
+ * Renomme un projet existant dans projects/.
+ */
+export async function renameProject(
+  oldName: string,
+  newName: string
+): Promise<string> {
+  return invoke<string>("rename_project", {
+    oldName: oldName.trim(),
+    newName: newName.trim(),
+  });
+}
+
+/**
+ * Déplace l'ensemble d'un projet vers la corbeille / archives sécurisée.
+ */
+export async function deleteProject(projectName: string): Promise<void> {
+  return invoke<void>("delete_project", {
+    projectName: projectName.trim(),
+  });
+}
+
+/**
  * Lance une application externe de l'écosystème PH3YNYX.OS (VespΣr ou Chr0nosV3rs).
  */
 export async function launchExternalApp(

@@ -403,6 +403,64 @@ pub fn create_project(app: AppHandle, project_name: String) -> Result<String, St
     Ok(valid_name)
 }
 
+/// Renomme un dossier de projet existant dans le coffre `projects/`.
+#[tauri::command]
+pub fn rename_project(
+    app: AppHandle,
+    old_name: String,
+    new_name: String,
+) -> Result<String, String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+    let valid_old = validate_single_name(&old_name, "old_name")?;
+    let valid_new = validate_single_name(&new_name, "new_name")?;
+
+    let old_dir = projects_dir.join(&valid_old);
+    if !old_dir.exists() || !old_dir.is_dir() {
+        return Err(format!("Le projet '{}' est introuvable.", valid_old));
+    }
+
+    let new_dir = projects_dir.join(&valid_new);
+    if new_dir.exists() {
+        return Err(format!("Un projet nommé '{}' existe déjà.", valid_new));
+    }
+
+    fs::rename(&old_dir, &new_dir).map_err(|e| {
+        format!(
+            "Impossible de renommer le projet de '{}' vers '{}' : {}",
+            valid_old, valid_new, e
+        )
+    })?;
+
+    Ok(valid_new)
+}
+
+/// Déplace l'ensemble d'un dossier de projet vers la corbeille (`app_data_dir/trash/`) avec horodatage.
+/// Tous les sous-dossiers et fichiers contenus sont archivés ensemble dans la corbeille.
+#[tauri::command]
+pub fn delete_project(app: AppHandle, project_name: String) -> Result<(), String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+    let trash_dir = get_trash_dir(&app)?;
+
+    let valid_project = validate_single_name(&project_name, "project_name")?;
+    let src = projects_dir.join(&valid_project);
+
+    if !src.exists() || !src.is_dir() {
+        return Err(format!("Le projet '{}' est introuvable.", valid_project));
+    }
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let trash_name = format!("{}_{}", timestamp, valid_project);
+    let dest = trash_dir.join(trash_name);
+
+    move_entry_safely(&src, &dest)?;
+
+    Ok(())
+}
+
 /// Ouvre un fichier spécifique dans l'application par défaut de Windows.
 /// Valide le nom du projet et le sous-chemin pour empêcher toute traversée (`..`).
 #[tauri::command]
