@@ -63,46 +63,10 @@
   letter-spacing: 0.05em;
 }
 
-.project-tab-popover__root-btn {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--accent-blue-muted);
-  color: var(--accent-blue);
-  border: 1px solid var(--accent-blue-border);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.project-tab-popover__root-btn:hover {
-  background: var(--accent-blue);
-  color: var(--text-on-accent);
-}
-
-.project-tab-popover__section {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.project-tab-popover__section-title {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-secondary);
-  padding: 2px 4px;
-}
-
 .project-tab-popover__folder-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 220px;
-  overflow-y: auto;
-  scrollbar-width: thin;
 }
 
 .project-tab-popover__folder-item {

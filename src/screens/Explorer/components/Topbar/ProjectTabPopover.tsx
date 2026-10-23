@@ -11,7 +11,6 @@ export const STANDARD_SUBFOLDERS = [
 export interface ProjectTabPopoverProps {
   project: string;
   x: number;
-  availableSubfolders: string[];
   activeSubpath?: string;
   onNavigateSubfolder: (project: string, subfolder?: string) => void;
   onOpenInSecondary?: (project: string) => void;
@@ -67,7 +66,6 @@ function getFolderIcon(folderName: string) {
 export const ProjectTabPopover: React.FC<ProjectTabPopoverProps> = ({
   project,
   x,
-  availableSubfolders,
   activeSubpath,
   onNavigateSubfolder,
   onOpenInSecondary,
@@ -97,10 +95,6 @@ export const ProjectTabPopover: React.FC<ProjectTabPopoverProps> = ({
     };
   }, [onClose]);
 
-  // Combine standard folders with any existing custom folders
-  const allFoldersSet = new Set<string>([...STANDARD_SUBFOLDERS, ...availableSubfolders]);
-  const foldersList = Array.from(allFoldersSet);
-
   const popoverWidth = 260;
   const adjustedX = Math.max(10, Math.min(x, window.innerWidth - popoverWidth - 10));
 
@@ -121,40 +115,26 @@ export const ProjectTabPopover: React.FC<ProjectTabPopoverProps> = ({
             {project}
           </span>
         </div>
-        <button
-          type="button"
-          className="project-tab-popover__root-btn"
-          onClick={() => {
-            onNavigateSubfolder(project, undefined);
-            onClose();
-          }}
-          title="Aller à la racine du projet"
-        >
-          Racine
-        </button>
       </header>
 
-      <div className="project-tab-popover__section">
-        <span className="project-tab-popover__section-title">Sous-dossiers structurels</span>
-        <div className="project-tab-popover__folder-list">
-          {foldersList.map((folder) => {
-            const isActive = activeSubpath === folder;
-            return (
-              <button
-                key={folder}
-                type="button"
-                className={`project-tab-popover__folder-item ${isActive ? "project-tab-popover__folder-item--active" : ""}`}
-                onClick={() => {
-                  onNavigateSubfolder(project, folder);
-                  onClose();
-                }}
-              >
-                {getFolderIcon(folder)}
-                <span className="project-tab-popover__folder-name">{folder}</span>
-              </button>
-            );
-          })}
-        </div>
+      <div className="project-tab-popover__folder-list">
+        {STANDARD_SUBFOLDERS.map((folder) => {
+          const isActive = activeSubpath === folder;
+          return (
+            <button
+              key={folder}
+              type="button"
+              className={`project-tab-popover__folder-item ${isActive ? "project-tab-popover__folder-item--active" : ""}`}
+              onClick={() => {
+                onNavigateSubfolder(project, folder);
+                onClose();
+              }}
+            >
+              {getFolderIcon(folder)}
+              <span className="project-tab-popover__folder-name">{folder}</span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="project-tab-popover__divider" />

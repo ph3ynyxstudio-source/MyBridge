@@ -56,6 +56,7 @@ export interface GridViewProps {
   previewFile?: PreviewFile | null;
   onClosePreview?: () => void;
   onOpenInSystem?: (project: string, subpath: string) => void;
+  onFileSizeUpdated?: (project: string, subpath: string, newSize: number) => void;
 }
 
 export const GridView: React.FC<GridViewProps> = ({
@@ -95,6 +96,7 @@ export const GridView: React.FC<GridViewProps> = ({
   previewFile,
   onClosePreview,
   onOpenInSystem,
+  onFileSizeUpdated,
 }) => {
   const isRightPanelOpen = Boolean(previewFile || isSplitViewActive);
 
@@ -194,6 +196,7 @@ export const GridView: React.FC<GridViewProps> = ({
           file={previewFile}
           onClose={onClosePreview || (() => {})}
           onOpenInSystem={onOpenInSystem || (() => {})}
+          onFileSizeUpdated={onFileSizeUpdated}
         />
       ) : isSplitViewActive ? (
         <aside

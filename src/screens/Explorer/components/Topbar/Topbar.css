@@ -90,36 +90,44 @@
   pointer-events: none;
 }
 
-/* Bouton Boîte de dépôt (Inbox) + Badge jaune d'alerte */
-.topbar__inbox-btn {
+/* Bouton MyBr|dge (première position à gauche : raccourci Accueil / Inbox) */
+.topbar__brand {
   position: relative;
-  width: 34px;
-  height: 30px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 7px;
+  padding: 5px 10px;
   border-radius: var(--radius-sm);
-  color: var(--accent-blue);
+  color: var(--text-primary);
   background-color: var(--accent-hover);
   border: 1px solid var(--accent-blue-border);
-  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
 }
 
-.topbar__inbox-btn:hover {
+.topbar__brand:hover {
   background-color: var(--accent-blue-muted);
   border-color: var(--accent-blue);
+  color: var(--accent-blue);
   transform: translateY(-1px);
 }
 
-.topbar__inbox-svg {
-  width: 19px;
-  height: 19px;
+.topbar__brand-icon {
+  width: 17px;
+  height: 17px;
+  color: var(--accent-blue);
+}
+
+.topbar__brand-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
 }
 
 .topbar__inbox-badge {
   position: absolute;
-  top: -3px;
-  right: -4px;
+  top: -4px;
+  right: -5px;
   width: 15px;
   height: 15px;
   border-radius: 50%;
@@ -176,31 +184,35 @@
   border-bottom-color: var(--accent-blue);
 }
 
-/* Identité centrale MyBr|dge */
-.topbar__brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  transition: color 0.15s ease;
+.topbar__add-shortcut {
+  flex-shrink: 0;
+  margin-left: 2px;
 }
 
-.topbar__brand:hover {
-  color: var(--accent-blue);
+/* Popover allégé de création de projet (+) */
+.topbar__create-popover {
+  position: absolute;
+  top: calc(var(--topbar-height) + 4px);
+  width: 280px;
+  background-color: var(--popover-bg);
+  border: 1.5px solid var(--accent-blue-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--popover-shadow);
+  backdrop-filter: blur(12px);
+  padding: 10px;
+  z-index: 1000;
+  animation: createPopoverFadeIn 0.14s ease-out;
 }
 
-.topbar__brand-icon {
-  width: 17px;
-  height: 17px;
-  color: var(--accent-blue);
-}
-
-.topbar__brand-title {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
+@keyframes createPopoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Pilule Split-View (V2+) */

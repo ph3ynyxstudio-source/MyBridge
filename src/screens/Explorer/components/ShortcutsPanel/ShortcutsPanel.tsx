@@ -1,6 +1,5 @@
 import React, { useRef, useEffect } from "react";
 import { UI_TERMS } from "../../../../theme/UI_TERMS";
-import { NewProjectInput } from "../NewProjectInput/NewProjectInput";
 import "./ShortcutsPanel.css";
 
 export const MAX_SHORTCUTS = 4;
@@ -10,7 +9,6 @@ export interface ShortcutsPanelProps {
   projects: string[];
   pinnedProjects: string[];
   onTogglePinProject: (projectName: string) => void;
-  onCreateProject: (projectName: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -19,28 +17,37 @@ export const ShortcutsPanel: React.FC<ShortcutsPanelProps> = ({
   projects,
   pinnedProjects,
   onTogglePinProject,
-  onCreateProject,
   onClose,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Fermeture automatique au clic à l'extérieur
+  // Fermeture automatique au clic à l'extérieur ou touche Échap
   useEffect(() => {
     if (!isOpen) return;
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+
     const handleClickOutside = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        // Ignorer si le clic provient du bouton (+) de la Topbar
+        // Ignorer si le clic provient du bouton Options (engrenage) de la Topbar
         const target = e.target as HTMLElement | null;
-        if (target && target.closest(".topbar__add-shortcut")) {
+        if (target && target.closest(".topbar__settings-btn")) {
           return;
         }
         onClose();
       }
     };
 
+    window.addEventListener("keydown", handleKeyDown);
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) {
@@ -146,14 +153,6 @@ export const ShortcutsPanel: React.FC<ShortcutsPanelProps> = ({
           </ul>
         )}
       </div>
-
-      {/* Intégration du composant NewProjectInput en bas du panneau */}
-      <footer className="shortcuts-panel__footer">
-        <NewProjectInput
-          existingProjects={projects}
-          onCreateProject={onCreateProject}
-        />
-      </footer>
     </div>
   );
 };

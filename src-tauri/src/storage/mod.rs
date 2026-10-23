@@ -141,19 +141,24 @@ pub fn get_inbox_items(app: AppHandle) -> Result<Vec<InboxItem>, String> {
 
     for entry_res in read_dir {
         let entry = entry_res.map_err(|e| format!("Entrée inbox illisible : {}", e))?;
-        let metadata = entry
-            .metadata()
+        let path = entry.path();
+        let metadata = fs::metadata(&path)
+            .or_else(|_| entry.metadata())
             .map_err(|e| format!("Métadonnées inbox illisibles : {}", e))?;
 
         let nom = entry.file_name().to_string_lossy().to_string();
         let est_dossier = metadata.is_dir();
-        let taille = if est_dossier { 0 } else { metadata.len() };
+        let taille = if est_dossier {
+            0
+        } else {
+            fs::metadata(&path)
+                .map(|m| m.len())
+                .unwrap_or_else(|_| metadata.len())
+        };
         let extension = if est_dossier {
             None
         } else {
-            entry
-                .path()
-                .extension()
+            path.extension()
                 .map(|ext| ext.to_string_lossy().to_string())
         };
         let date_modification = extract_modified_timestamp(&metadata);
@@ -312,13 +317,19 @@ fn read_directory_entries(
     for entry_res in read_dir {
         let entry = entry_res.map_err(|e| format!("Entrée illisible : {}", e))?;
         let path = entry.path();
-        let metadata = entry
-            .metadata()
+        let metadata = fs::metadata(&path)
+            .or_else(|_| entry.metadata())
             .map_err(|e| format!("Métadonnées illisibles : {}", e))?;
 
         let nom = entry.file_name().to_string_lossy().to_string();
         let est_dossier = metadata.is_dir();
-        let taille = if est_dossier { 0 } else { metadata.len() };
+        let taille = if est_dossier {
+            0
+        } else {
+            fs::metadata(&path)
+                .map(|m| m.len())
+                .unwrap_or_else(|_| metadata.len())
+        };
 
         let rel_path = path
             .strip_prefix(project_root)
@@ -371,7 +382,19 @@ pub fn read_project_contents(
     }
 
     let target_dir = project_root.join(&valid_subpath);
-    if !target_dir.exists() || !target_dir.is_dir() {
+    if !target_dir.exists() {
+        let sub_str = valid_subpath.to_string_lossy();
+        if STANDARD_SUBFOLDERS.iter().any(|&s| s == sub_str) {
+            fs::create_dir_all(&target_dir).map_err(|e| {
+                format!(
+                    "Impossible de créer le sous-dossier standard '{}' : {}",
+                    sub_str, e
+                )
+            })?;
+        } else {
+            return Err("Le dossier demandé n'existe pas dans ce projet.".to_string());
+        }
+    } else if !target_dir.is_dir() {
         return Err("Le dossier demandé n'existe pas dans ce projet.".to_string());
     }
 
@@ -508,14 +531,15 @@ pub fn get_file_metadata(
     Ok(FileMetadataInfo { size, modified })
 }
 
-/// Écrit ou sauvegarde le contenu texte dans un fichier texte existant ou nouveau.
+/// Écrit ou sauvegarde le contenu texte dans un fichier texte existant ou nouveau
+/// et renvoie la taille réelle du fichier sur le disque via `std::fs::metadata().len()`.
 #[tauri::command]
 pub fn write_text_file(
     app: AppHandle,
     project_name: String,
     subpath: String,
     content: String,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     let (_, projects_dir) = init_storage_dirs(&app)?;
     let valid_project = validate_single_name(&project_name, "project_name")?;
     let valid_subpath = validate_relative_subpath(Some(subpath))?;
@@ -536,7 +560,11 @@ pub fn write_text_file(
     fs::write(&file_path, content.as_bytes())
         .map_err(|e| format!("Impossible d'enregistrer le fichier : {}", e))?;
 
-    Ok(())
+    let size = fs::metadata(&file_path)
+        .map(|m| m.len())
+        .unwrap_or(content.len() as u64);
+
+    Ok(size)
 }
 
 /// Importe un fichier ou dossier externe (depuis son chemin natif Windows) vers inbox/ ou vers un projet cible.
@@ -993,19 +1021,24 @@ pub fn get_trash_items(app: AppHandle) -> Result<Vec<InboxItem>, String> {
 
     for entry_res in read_dir {
         let entry = entry_res.map_err(|e| format!("Entrée corbeille illisible : {}", e))?;
-        let metadata = entry
-            .metadata()
+        let path = entry.path();
+        let metadata = fs::metadata(&path)
+            .or_else(|_| entry.metadata())
             .map_err(|e| format!("Métadonnées corbeille illisibles : {}", e))?;
 
         let nom = entry.file_name().to_string_lossy().to_string();
         let est_dossier = metadata.is_dir();
-        let taille = if est_dossier { 0 } else { metadata.len() };
+        let taille = if est_dossier {
+            0
+        } else {
+            fs::metadata(&path)
+                .map(|m| m.len())
+                .unwrap_or_else(|_| metadata.len())
+        };
         let extension = if est_dossier {
             None
         } else {
-            entry
-                .path()
-                .extension()
+            path.extension()
                 .map(|ext| ext.to_string_lossy().to_string())
         };
 

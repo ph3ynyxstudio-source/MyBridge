@@ -1,19 +1,22 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { UI_TERMS } from "../../../../theme/UI_TERMS";
 import { ThemeMode } from "../../../../theme/design_tokens";
+import { NewProjectInput } from "../NewProjectInput/NewProjectInput";
 import { ProjectTabPopover } from "./ProjectTabPopover";
 import "./Topbar.css";
 
 export interface TopbarProps {
+  projects: string[];
   pinnedProjects: string[];
   activeProject: string;
   onSelectProject: (project: string) => void;
   inboxCount: number;
   onOpenInbox: () => void;
-  onOpenProjectManager: () => void;
+  onCreateProject: (projectName: string) => Promise<void>;
+  isSettingsOpen: boolean;
+  onToggleSettings: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  onGoHome: () => void;
   onRefresh: () => void;
   canGoBack?: boolean;
   onGoBack?: () => void;
@@ -24,7 +27,6 @@ export interface TopbarProps {
 
   // Navigation contextuelle et gestion des onglets
   activeSubpath?: string;
-  getProjectSubfolders?: (project: string) => string[];
   onNavigateSubfolder?: (project: string, subfolder?: string) => void;
   onOpenInSecondary?: (project: string) => void;
   onRenameProject?: (project: string) => void;
@@ -32,15 +34,17 @@ export interface TopbarProps {
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
+  projects,
   pinnedProjects,
   activeProject,
   onSelectProject,
   inboxCount,
   onOpenInbox,
-  onOpenProjectManager,
+  onCreateProject,
+  isSettingsOpen,
+  onToggleSettings,
   searchQuery,
   onSearchChange,
-  onGoHome,
   onRefresh,
   canGoBack = false,
   onGoBack,
@@ -49,7 +53,6 @@ export const Topbar: React.FC<TopbarProps> = ({
   theme,
   onToggleTheme,
   activeSubpath,
-  getProjectSubfolders,
   onNavigateSubfolder,
   onOpenInSecondary,
   onRenameProject,
@@ -60,7 +63,41 @@ export const Topbar: React.FC<TopbarProps> = ({
     x: number;
   } | null>(null);
 
+  const [createPopoverX, setCreatePopoverX] = useState<number | null>(null);
+  const createPopoverRef = useRef<HTMLDivElement>(null);
+
   const clickTimerRef = useRef<number | null>(null);
+
+  // Fermeture du popover de création (+) au clic extérieur ou touche Échap
+  useEffect(() => {
+    if (createPopoverX === null) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setCreatePopoverX(null);
+      }
+    };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        createPopoverRef.current &&
+        !createPopoverRef.current.contains(e.target as Node)
+      ) {
+        const target = e.target as HTMLElement | null;
+        if (target && target.closest(".topbar__add-shortcut")) {
+          return;
+        }
+        setCreatePopoverX(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [createPopoverX]);
 
   const handleTabClick = (
     e: React.MouseEvent<HTMLButtonElement>,
@@ -68,6 +105,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   ) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = rect.left;
+
+    setCreatePopoverX(null);
 
     if (clickTimerRef.current) {
       window.clearTimeout(clickTimerRef.current);
@@ -98,36 +137,52 @@ export const Topbar: React.FC<TopbarProps> = ({
       clickTimerRef.current = null;
     }
     setPopoverProject(null);
+    setCreatePopoverX(null);
     onSelectProject(project);
     onNavigateSubfolder?.(project, undefined);
   };
 
+  const handleToggleCreatePopover = (
+    e: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setPopoverProject(null);
+    setCreatePopoverX((prev) => (prev !== null ? null : rect.left));
+  };
+
+  const createPopoverWidth = 280;
+  const adjustedCreateX =
+    createPopoverX !== null
+      ? Math.max(10, Math.min(createPopoverX, window.innerWidth - createPopoverWidth - 10))
+      : 0;
+
   return (
     <header className="topbar">
-      {/* ZONE GAUCHE : Boîte de dépôt (Inbox + badge jaune), (+), Onglets projets */}
+      {/* ZONE GAUCHE : Bouton MyBr|dge (Accueil / Inbox), Onglets projets, Bouton (+) */}
       <div className="topbar__zone topbar__zone--left">
-        {/* Bouton Boîte de dépôt (Inbox locale) avec badge d'alerte jaune */}
+        {/* Raccourci Accueil / Inbox : Bouton MyBr|dge en première position à gauche */}
         <button
           type="button"
-          className="topbar__inbox-btn"
+          className="topbar__brand"
           onClick={onOpenInbox}
           title={UI_TERMS.topbar.inboxTitle}
           aria-label={UI_TERMS.topbar.inboxTitle}
         >
           <svg
-            className="topbar__inbox-svg"
+            className="topbar__brand-icon"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.9"
+            strokeWidth="1.8"
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <path d="M4 13v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6" />
-            <path d="M4 13h4.5l1.5 2.5h4L15.5 13H20" />
-            <path d="M12 3v8" />
-            <path d="M8.5 7.5L12 11l3.5-3.5" />
+            <path d="M2 18h20" />
+            <path d="M6 18V7" />
+            <path d="M18 18V7" />
+            <path d="M2 14c2.5-1.5 4-4 4-7 2.5 4.5 9.5 4.5 12 0 0 3 1.5 5.5 4 7" />
           </svg>
+          <span className="topbar__brand-title">{UI_TERMS.appTitle}</span>
           {inboxCount > 0 && (
             <span
               className="topbar__inbox-badge"
@@ -138,23 +193,9 @@ export const Topbar: React.FC<TopbarProps> = ({
           )}
         </button>
 
-        {/* Bouton (+) pour ouvrir la gestion des projets */}
-        <button
-          type="button"
-          className="topbar__icon-btn topbar__add-shortcut"
-          onClick={onOpenProjectManager}
-          title={UI_TERMS.topbar.addShortcut}
-          aria-label={UI_TERMS.topbar.addShortcut}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="4" x2="12" y2="20" />
-            <line x1="4" y1="12" x2="20" y2="12" />
-          </svg>
-        </button>
-
         <span className="topbar__divider" aria-hidden="true" />
 
-        {/* Onglets de projets épinglés (scroll horizontal si débordement) */}
+        {/* Onglets de projets épinglés suivis du bouton (+) */}
         <nav className="topbar__tabs" aria-label="Projets épinglés">
           {pinnedProjects.map((project) => {
             const isActive = project === activeProject;
@@ -173,17 +214,30 @@ export const Topbar: React.FC<TopbarProps> = ({
               </React.Fragment>
             );
           })}
+
+          {/* Bouton (+) placé juste après le dernier onglet de projet */}
+          <button
+            type="button"
+            className={`topbar__icon-btn topbar__add-shortcut ${
+              createPopoverX !== null ? "topbar__icon-btn--active" : ""
+            }`}
+            onClick={handleToggleCreatePopover}
+            title="Créer un nouveau projet (+)"
+            aria-label="Créer un nouveau projet (+)"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="12" y1="4" x2="12" y2="20" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+            </svg>
+          </button>
         </nav>
       </div>
 
-      {/* Popover contextuel ancré sous l'onglet cliqué */}
+      {/* Popover contextuel ancré sous l'onglet de projet cliqué */}
       {popoverProject && (
         <ProjectTabPopover
           project={popoverProject.project}
           x={popoverProject.x}
-          availableSubfolders={
-            getProjectSubfolders?.(popoverProject.project) || []
-          }
           activeSubpath={
             popoverProject.project === activeProject ? activeSubpath : undefined
           }
@@ -199,33 +253,26 @@ export const Topbar: React.FC<TopbarProps> = ({
         />
       )}
 
-      {/* ZONE CENTRE : Accueil, Identité MyBr|dge */}
-      <div className="topbar__zone topbar__zone--center">
-        <button
-          type="button"
-          className="topbar__brand"
-          onClick={onGoHome}
-          title={UI_TERMS.topbar.home}
+      {/* Popover allégé de création de projet (+) : saisie du nom + bouton Créer */}
+      {createPopoverX !== null && (
+        <div
+          ref={createPopoverRef}
+          className="topbar__create-popover"
+          style={{ left: `${adjustedCreateX}px` }}
+          role="dialog"
+          aria-label="Nouveau projet"
         >
-          <svg
-            className="topbar__brand-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M2 18h20" />
-            <path d="M6 18V7" />
-            <path d="M18 18V7" />
-            <path d="M2 14c2.5-1.5 4-4 4-7 2.5 4.5 9.5 4.5 12 0 0 3 1.5 5.5 4 7" />
-          </svg>
-          <span className="topbar__brand-title">{UI_TERMS.appTitle}</span>
-        </button>
-      </div>
+          <NewProjectInput
+            existingProjects={projects}
+            onCreateProject={async (projectName) => {
+              await onCreateProject(projectName);
+              setCreatePopoverX(null);
+            }}
+          />
+        </div>
+      )}
 
-      {/* ZONE DROITE : Navigation Arrière/Avant, Recherche, Actualiser, Sélecteur de Thème */}
+      {/* ZONE DROITE : Navigation Arrière/Avant, Recherche, Actualiser, Sélecteur de Thème, Options */}
       <div className="topbar__zone topbar__zone--right">
         <div className="topbar__nav-arrows">
           <button
@@ -321,9 +368,17 @@ export const Topbar: React.FC<TopbarProps> = ({
           <span className="topbar__theme-thumb" aria-hidden="true" />
         </button>
 
+        {/* Bouton Options (icône engrenage) : configuration des projets épinglés / favoris */}
         <button
           type="button"
-          className="topbar__icon-btn topbar__icon-btn--accent"
+          className={`topbar__icon-btn topbar__icon-btn--accent topbar__settings-btn ${
+            isSettingsOpen ? "topbar__icon-btn--active" : ""
+          }`}
+          onClick={() => {
+            setPopoverProject(null);
+            setCreatePopoverX(null);
+            onToggleSettings();
+          }}
           title={UI_TERMS.topbar.settings}
           aria-label={UI_TERMS.topbar.settings}
         >

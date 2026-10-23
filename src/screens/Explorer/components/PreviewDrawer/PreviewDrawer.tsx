@@ -19,6 +19,7 @@ export interface PreviewDrawerProps {
   file: PreviewFile;
   onClose: () => void;
   onOpenInSystem: (project: string, subpath: string) => void;
+  onFileSizeUpdated?: (project: string, subpath: string, newSize: number) => void;
 }
 
 const IMAGE_EXTENSIONS = new Set([
@@ -35,6 +36,7 @@ const IMAGE_EXTENSIONS = new Set([
 const TEXT_EXTENSIONS = new Set([
   "txt",
   "md",
+  "markdown",
   "log",
   "json",
   "toml",
@@ -122,6 +124,7 @@ export const PreviewDrawer: React.FC<PreviewDrawerProps> = ({
   file,
   onClose,
   onOpenInSystem,
+  onFileSizeUpdated,
 }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -142,29 +145,29 @@ export const PreviewDrawer: React.FC<PreviewDrawerProps> = ({
   const isImage = IMAGE_EXTENSIONS.has(ext);
   const isPdf = ext === "pdf";
   const isText = TEXT_EXTENSIONS.has(ext);
-  const isMarkdown = ext === "md";
+  const isMarkdown = ext === "md" || ext === "markdown";
   const isSupported = isImage || isPdf || isText;
 
-  // Récupération de la taille réelle si manquante
+  // Récupération systématique de la taille réelle via std::fs::metadata().len() côté Rust
   useEffect(() => {
     let active = true;
-    if (file.size === undefined || file.size === 0) {
-      getFileMetadata(file.project, file.subpath)
-        .then((meta) => {
-          if (active && meta.size > 0) {
-            setFileSize(meta.size);
-          }
-        })
-        .catch(() => {
-          // ignore fallback
-        });
-    } else {
-      setFileSize(file.size);
-    }
+    setFileSize(file.size);
+
+    getFileMetadata(file.project, file.subpath)
+      .then((meta) => {
+        if (active && typeof meta.size === "number") {
+          setFileSize(meta.size);
+          onFileSizeUpdated?.(file.project, file.subpath, meta.size);
+        }
+      })
+      .catch(() => {
+        // En cas d'échec, conserve file.size
+      });
+
     return () => {
       active = false;
     };
-  }, [file.project, file.subpath, file.size]);
+  }, [file.project, file.subpath, file.size, onFileSizeUpdated]);
 
   // Chargement du fichier
   useEffect(() => {
@@ -191,6 +194,8 @@ export const PreviewDrawer: React.FC<PreviewDrawerProps> = ({
             setTextContent(text);
             setDraftContent(text);
             lastSavedRef.current = text;
+            const computedBytes = new Blob([text]).size;
+            setFileSize((prev) => (prev && prev > 0 ? prev : computedBytes));
           }
         }
       } catch (err: unknown) {
@@ -225,18 +230,19 @@ export const PreviewDrawer: React.FC<PreviewDrawerProps> = ({
 
       setSaveStatus("saving");
       try {
-        await writeTextFile(file.project, file.subpath, contentToSave);
+        const writtenSize = await writeTextFile(file.project, file.subpath, contentToSave);
         lastSavedRef.current = contentToSave;
         setTextContent(contentToSave);
         setSaveStatus("saved");
-        // Mettre à jour la taille du fichier
-        setFileSize(new Blob([contentToSave]).size);
+        const nextSize = typeof writtenSize === "number" ? writtenSize : new Blob([contentToSave]).size;
+        setFileSize(nextSize);
+        onFileSizeUpdated?.(file.project, file.subpath, nextSize);
       } catch (err) {
         console.error("Erreur lors de la sauvegarde du fichier :", err);
         setSaveStatus("error");
       }
     },
-    [file.project, file.subpath]
+    [file.project, file.subpath, onFileSizeUpdated]
   );
 
   // Modification du texte avec debounce 600ms

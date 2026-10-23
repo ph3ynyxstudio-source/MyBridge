@@ -200,14 +200,14 @@ export async function readFileText(
 }
 
 /**
- * Sauvegarde le contenu texte dans un fichier (.md, .txt, etc.).
+ * Sauvegarde le contenu texte dans un fichier (.md, .txt, etc.) et renvoie sa nouvelle taille en octets.
  */
 export async function writeTextFile(
   projectName: string,
   subpath: string,
   content: string
-): Promise<void> {
-  return invoke<void>("write_text_file", {
+): Promise<number> {
+  return invoke<number>("write_text_file", {
     projectName,
     subpath,
     content,

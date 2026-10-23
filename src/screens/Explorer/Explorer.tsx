@@ -56,6 +56,7 @@ const PREVIEWABLE_EXTENSIONS = new Set([
   "ico",
   "txt",
   "md",
+  "markdown",
   "log",
   "json",
   "toml",
@@ -675,10 +676,37 @@ export const Explorer: React.FC = () => {
     void refreshProjects(activeProject, currentSubpath);
   };
 
-  const handleGoHome = () => {
-    if (!activeProject) return;
-    navigateTo(activeProject, undefined);
-  };
+  /**
+   * Synchronise en mémoire la taille réelle d'un fichier après lecture ou édition dans le visualiseur.
+   */
+  const handleFileSizeUpdated = useCallback(
+    (project: string, subpath: string, newSize: number) => {
+      if (project === activeProject) {
+        setProjectContents((prev) =>
+          prev.map((item) =>
+            (item.chemin_relatif || item.nom) === subpath && item.taille !== newSize
+              ? { ...item, taille: newSize }
+              : item
+          )
+        );
+      }
+      if (isSplitViewActive && project === secondaryProject) {
+        setSecondaryContents((prev) =>
+          prev.map((item) =>
+            (item.chemin_relatif || item.nom) === subpath && item.taille !== newSize
+              ? { ...item, taille: newSize }
+              : item
+          )
+        );
+      }
+      setPreviewFile((prev) =>
+        prev && prev.project === project && prev.subpath === subpath && prev.size !== newSize
+          ? { ...prev, size: newSize }
+          : prev
+      );
+    },
+    [activeProject, isSplitViewActive, secondaryProject]
+  );
 
   /**
    * Création d'un nouveau projet via Rust.
@@ -1246,15 +1274,17 @@ export const Explorer: React.FC = () => {
       )}
 
       <Topbar
+        projects={projects}
         pinnedProjects={pinnedProjects}
         activeProject={activeProject}
         onSelectProject={handleSelectProject}
         inboxCount={inboxItems.length}
         onOpenInbox={() => setIsInboxDrawerOpen((prev) => !prev)}
-        onOpenProjectManager={() => setIsShortcutsOpen((prev) => !prev)}
+        onCreateProject={handleCreateProject}
+        isSettingsOpen={isShortcutsOpen}
+        onToggleSettings={() => setIsShortcutsOpen((prev) => !prev)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        onGoHome={handleGoHome}
         onRefresh={handleRefreshAll}
         canGoBack={canGoBack}
         onGoBack={handleGoBack}
@@ -1263,20 +1293,18 @@ export const Explorer: React.FC = () => {
         theme={theme}
         onToggleTheme={handleToggleTheme}
         activeSubpath={currentSubpath}
-        getProjectSubfolders={(p) => projectSubfoldersMap[p] || []}
         onNavigateSubfolder={(project, subfolder) => navigateTo(project, subfolder)}
         onOpenInSecondary={handleOpenInSecondary}
         onRenameProject={(project) => handleStartRenameProject(project)}
         onDeleteProject={(project) => setProjectToDelete(project)}
       />
 
-      {/* Panneau contextuel de raccourcis ancré sous le bouton (+) */}
+      {/* Panneau d'options (icône engrenage) : configuration des projets épinglés / favoris */}
       <ShortcutsPanel
         isOpen={isShortcutsOpen}
         projects={projects}
         pinnedProjects={pinnedProjects}
         onTogglePinProject={handleTogglePinProject}
-        onCreateProject={handleCreateProject}
         onClose={() => setIsShortcutsOpen(false)}
       />
 
@@ -1340,6 +1368,7 @@ export const Explorer: React.FC = () => {
           onOpenInSystem={(project, subpath) => {
             void openFileInSystem(project, subpath);
           }}
+          onFileSizeUpdated={handleFileSizeUpdated}
         />
 
         <EcosystemSidebar

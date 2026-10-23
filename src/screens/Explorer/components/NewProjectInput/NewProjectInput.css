@@ -5,8 +5,6 @@
   flex-direction: column;
   gap: 6px;
   width: 100%;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-subtle);
 }
 
 .new-project-input__form {

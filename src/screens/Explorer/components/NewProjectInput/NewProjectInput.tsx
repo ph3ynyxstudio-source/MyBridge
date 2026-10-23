@@ -54,6 +54,7 @@ export const NewProjectInput: React.FC<NewProjectInputProps> = ({
             if (errorMsg) setErrorMsg(null);
           }}
           disabled={isCreating}
+          autoFocus
         />
         <button
           type="submit"

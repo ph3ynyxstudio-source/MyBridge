@@ -3,7 +3,7 @@
 .shortcuts-panel {
   position: absolute;
   top: calc(var(--topbar-height) + 4px);
-  left: 56px;
+  right: 12px;
   width: 290px;
   background-color: var(--bg-panel);
   border: 1.5px solid var(--accent-blue-border);
