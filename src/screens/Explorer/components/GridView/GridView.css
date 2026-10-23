@@ -11,6 +11,7 @@
 
 /* PANNEAU PRINCIPAL (PROJET 1) */
 .grid-view__primary {
+  position: relative;
   flex: 1 1 auto;
   padding: 44px 48px;
   overflow-y: auto;
@@ -18,6 +19,68 @@
   flex-direction: column;
   gap: 28px;
   transition: all 0.18s ease;
+}
+
+.grid-view__primary--selecting {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Retour visuel lors du survol en Glisser-Déposer sur le fond vide du panneau principal */
+.grid-view__primary--drag-over {
+  background-color: rgba(56, 189, 248, 0.05);
+  box-shadow: inset 0 0 0 2px var(--accent-blue);
+  border-radius: var(--radius-md);
+}
+
+.grid-view__top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.grid-view__selection-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 12px;
+  border-radius: 999px;
+  background-color: var(--accent-blue-muted);
+  border: 1px solid var(--accent-blue-border);
+  color: var(--accent-blue);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.grid-view__selection-clear {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 11px;
+  border-radius: 999px;
+  line-height: 1;
+  opacity: 0.75;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+.grid-view__selection-clear:hover {
+  opacity: 1;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* RECTANGLE DE SÉLECTION (MARQUEE SELECTION TYPE EXPLORATEUR WINDOWS) */
+.grid-view__marquee {
+  position: absolute;
+  pointer-events: none;
+  z-index: 30;
+  border: 1.5px solid var(--accent-blue);
+  background-color: rgba(56, 189, 248, 0.16);
+  border-radius: 4px;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
 }
 
 /* En mode Split-View, le panneau principal partage 50% de l'espace */
@@ -82,6 +145,14 @@
   flex-direction: column;
   gap: 20px;
   animation: splitPanelSlideIn 0.18s ease-out;
+  transition: background-color 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+/* Retour visuel lors du survol en Glisser-Déposer sur le fond vide du panneau droit (Split-View) */
+.grid-view__secondary--drag-over {
+  background-color: rgba(56, 189, 248, 0.07);
+  border-style: dashed;
+  box-shadow: var(--split-panel-shadow), inset 0 0 0 2px rgba(56, 189, 248, 0.45);
 }
 
 @keyframes splitPanelSlideIn {

@@ -3,10 +3,11 @@ pub mod storage;
 
 use launcher::launch_external_app;
 use storage::{
-    copy_item, create_project, delete_project, empty_trash, get_file_absolute_path,
-    get_file_metadata, get_inbox_items, get_trash_items, import_external_path, init_storage_dirs,
-    list_projects, move_inbox_item, move_item, move_to_trash, open_file_in_system, read_file_text,
-    read_project_contents, rename_project, save_file_bytes, write_text_file,
+    convert_inbox_folder_to_project, copy_item, create_project, delete_project, empty_trash,
+    get_file_absolute_path, get_file_metadata, get_inbox_items, get_trash_items,
+    import_external_path, init_storage_dirs, list_projects, move_inbox_item, move_item,
+    move_to_trash, open_file_in_system, read_file_text, read_project_contents, rename_project,
+    save_file_bytes, write_text_file,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -21,6 +22,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             create_project,
+            convert_inbox_folder_to_project,
             rename_project,
             delete_project,
             get_inbox_items,

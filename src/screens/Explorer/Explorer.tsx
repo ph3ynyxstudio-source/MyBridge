@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { TileKind } from "../../components/FolderCard/FolderCard";
 import {
+  convertInboxFolderToProject,
   copyItem,
   createProject,
   deleteProject,
@@ -208,6 +209,22 @@ export const Explorer: React.FC = () => {
 
   const [projectContents, setProjectContents] = useState<ProjectFolder[]>([]);
   const [selectedEntryId, setSelectedEntryId] = useState<string>("");
+  const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set());
+  const [lastSelectedEntryId, setLastSelectedEntryId] = useState<string>("");
+
+  // Référence mémoire du payload glissé (fallback fiable WebView2 lors du Drag & Drop interne)
+  const draggedPayloadRef = useRef<{
+    project: string;
+    subpath: string;
+    isFolder: boolean;
+    label: string;
+    items?: Array<{
+      project: string;
+      subpath: string;
+      isFolder: boolean;
+      label: string;
+    }>;
+  } | null>(null);
 
   // Mode Split-View (Deuxième projet simultané)
   const [isSplitViewActive, setIsSplitViewActive] = useState<boolean>(false);
@@ -335,14 +352,20 @@ export const Explorer: React.FC = () => {
 
         if (contents.length > 0) {
           const first = contents[0];
-          setSelectedEntryId(first.chemin_relatif || first.nom);
+          const firstId = first.chemin_relatif || first.nom;
+          setSelectedEntryId(firstId);
+          setSelectedEntryIds(new Set([firstId]));
+          setLastSelectedEntryId(firstId);
         } else {
           setSelectedEntryId("");
+          setSelectedEntryIds(new Set());
+          setLastSelectedEntryId("");
         }
       } catch (err) {
         if (seq !== loadSeqRef.current) return;
         console.error("Erreur lors de la lecture du projet :", err);
         setProjectContents([]);
+        setSelectedEntryIds(new Set());
       }
     },
     [resolveCanonicalSubpath]
@@ -673,11 +696,90 @@ export const Explorer: React.FC = () => {
   };
 
   /**
-   * Clic simple sur une tuile de la grille principale : met en surbrillance.
+   * Sélection d'une tuile de la grille principale avec gestion des modificateurs clavier :
+   * - Shift + Clic : sélectionne la plage continue entre le dernier élément sélectionné (ancre) et l'élément cliqué.
+   * - Ctrl / Meta + Clic : ajoute ou retire l'élément de la sélection existante.
+   * - Clic simple : sélectionne uniquement cet élément.
    */
-  const handleSelectGridEntry = (entry: GridEntry) => {
-    setSelectedEntryId(entry.id);
-  };
+  const handleSelectGridEntry = useCallback(
+    (entry: GridEntry, e?: React.MouseEvent) => {
+      const isShift = Boolean(e?.shiftKey);
+      const isCtrl = Boolean(e?.ctrlKey || e?.metaKey);
+
+      if (isShift) {
+        const anchorId = lastSelectedEntryId || selectedEntryId;
+        const anchorIdx = primaryGridEntries.findIndex((item) => item.id === anchorId);
+        const targetIdx = primaryGridEntries.findIndex((item) => item.id === entry.id);
+
+        if (anchorIdx !== -1 && targetIdx !== -1) {
+          const start = Math.min(anchorIdx, targetIdx);
+          const end = Math.max(anchorIdx, targetIdx);
+          const rangeIds = primaryGridEntries.slice(start, end + 1).map((item) => item.id);
+
+          setSelectedEntryIds((prev) => {
+            const next = isCtrl ? new Set(prev) : new Set<string>();
+            for (const id of rangeIds) {
+              next.add(id);
+            }
+            return next;
+          });
+          setSelectedEntryId(entry.id);
+          return;
+        }
+      }
+
+      if (isCtrl) {
+        setSelectedEntryIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(entry.id)) {
+            next.delete(entry.id);
+          } else {
+            next.add(entry.id);
+          }
+          return next;
+        });
+        setSelectedEntryId(entry.id);
+        setLastSelectedEntryId(entry.id);
+        return;
+      }
+
+      setSelectedEntryId(entry.id);
+      setSelectedEntryIds(new Set([entry.id]));
+      setLastSelectedEntryId(entry.id);
+    },
+    [lastSelectedEntryId, primaryGridEntries, selectedEntryId]
+  );
+
+  /**
+   * Mise à jour de la sélection par rectangle visuel (Marquee Selection).
+   */
+  const handleMarqueeSelect = useCallback(
+    (intersectedIds: string[], additive: boolean) => {
+      setSelectedEntryIds((prev) => {
+        const next = additive ? new Set(prev) : new Set<string>();
+        for (const id of intersectedIds) {
+          next.add(id);
+        }
+        return next;
+      });
+      if (intersectedIds.length > 0) {
+        const lastId = intersectedIds[intersectedIds.length - 1];
+        setSelectedEntryId(lastId);
+        setLastSelectedEntryId(lastId);
+      } else if (!additive) {
+        setSelectedEntryId("");
+      }
+    },
+    []
+  );
+
+  /**
+   * Effacement de la sélection active au clic sur le fond vide de la grille.
+   */
+  const handleClearSelection = useCallback(() => {
+    setSelectedEntryId("");
+    setSelectedEntryIds(new Set());
+  }, []);
 
   /**
    * Vérifie si un fichier dispose d'une extension prise en charge par le visualiseur (PreviewDrawer).
@@ -831,6 +933,31 @@ export const Explorer: React.FC = () => {
    */
   const handleCreateProject = async (newProjectName: string) => {
     const created = await createProject(newProjectName);
+    await refreshProjects(created, undefined);
+
+    setPinnedProjects((prev) => {
+      if (prev.length < MAX_SHORTCUTS && !prev.includes(created)) {
+        const next = [...prev, created];
+        try {
+          localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      }
+      return prev;
+    });
+  };
+
+  /**
+   * Conversion d'un dossier de la Boîte de dépôt en nouveau projet structuré via Rust.
+   */
+  const handleConvertInboxFolderToProject = async (
+    folderPath: string,
+    projectName: string
+  ) => {
+    const created = await convertInboxFolderToProject(folderPath, projectName);
+    await refreshInbox();
     await refreshProjects(created, undefined);
 
     setPinnedProjects((prev) => {
@@ -1170,19 +1297,57 @@ export const Explorer: React.FC = () => {
   };
 
   /**
-   * Début du glisser-déposer d'un fichier ou sous-dossier.
+   * Début du glisser-déposer d'un ou plusieurs fichiers / sous-dossiers.
+   * Si l'élément glissé fait partie d'une multisélection active, tous les éléments sélectionnés sont déplacés ensemble.
    */
   const handleDragStart = (
     e: React.DragEvent,
     entry: GridEntry,
     project: string
   ) => {
-    const payload = JSON.stringify({
+    let itemsToDrag: Array<{
+      project: string;
+      subpath: string;
+      isFolder: boolean;
+      label: string;
+    }>;
+
+    if (project === activeProject && selectedEntryIds.has(entry.id) && selectedEntryIds.size > 1) {
+      itemsToDrag = primaryGridEntries
+        .filter((item) => selectedEntryIds.has(item.id))
+        .map((item) => ({
+          project,
+          subpath: item.id,
+          isFolder: item.isFolder,
+          label: item.label,
+        }));
+    } else {
+      if (project === activeProject) {
+        setSelectedEntryId(entry.id);
+        setSelectedEntryIds(new Set([entry.id]));
+        setLastSelectedEntryId(entry.id);
+      }
+      itemsToDrag = [
+        {
+          project,
+          subpath: entry.id,
+          isFolder: entry.isFolder,
+          label: entry.label,
+        },
+      ];
+    }
+
+    const payloadObj = {
       project,
       subpath: entry.id,
       isFolder: entry.isFolder,
       label: entry.label,
-    });
+      items: itemsToDrag,
+    };
+
+    draggedPayloadRef.current = payloadObj;
+
+    const payload = JSON.stringify(payloadObj);
     e.dataTransfer.setData("application/json", payload);
     e.dataTransfer.setData("text/plain", payload);
     e.dataTransfer.effectAllowed = "move";
@@ -1222,7 +1387,7 @@ export const Explorer: React.FC = () => {
   };
 
   /**
-   * Dépôt d'un élément sur une tuile dossier.
+   * Dépôt d'un ou plusieurs éléments sur une tuile dossier de la grille.
    */
   const handleDropOnFolder = async (
     e: React.DragEvent,
@@ -1236,7 +1401,8 @@ export const Explorer: React.FC = () => {
     if (
       e.dataTransfer.files &&
       e.dataTransfer.files.length > 0 &&
-      !e.dataTransfer.types.includes("application/json")
+      !e.dataTransfer.types.includes("application/json") &&
+      !draggedPayloadRef.current
     ) {
       await handleImportExternalFiles(
         e.dataTransfer.files,
@@ -1249,26 +1415,83 @@ export const Explorer: React.FC = () => {
     const raw =
       e.dataTransfer.getData("application/json") ||
       e.dataTransfer.getData("text/plain");
-    if (!raw) return;
+
     try {
-      const data = JSON.parse(raw);
-      if (data.project === targetProject && data.subpath === targetFolderEntry.id) {
+      let data = raw ? JSON.parse(raw) : null;
+      if (!data && draggedPayloadRef.current) {
+        data = draggedPayloadRef.current;
+      }
+      if (!data) return;
+
+      // Cas 1 : Dépôt d'éléments provenant de la Boîte de dépôt (Inbox)
+      if (data.source === "inbox" && Array.isArray(data.items)) {
+        for (const itemName of data.items) {
+          await moveInboxItem(itemName, targetProject, targetFolderEntry.id);
+        }
+        await refreshInbox();
+        await loadProjectFolder(activeProject, currentSubpath, currentFolderType);
+        if (isSplitViewActive && secondaryProject) {
+          await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+        }
         return;
       }
-      // targetFolderEntry.id est le dossier cible, on y ajoute le nom de l'élément
-      const destSubpath = `${targetFolderEntry.id}/${data.label}`;
-      await moveItem(data.project, data.subpath, targetProject, destSubpath);
-      await loadProjectFolder(activeProject, currentSubpath);
-      if (isSplitViewActive && secondaryProject) {
-        await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+
+      // Cas 2 : Dépôt d'un ou plusieurs éléments de la grille vers le dossier cible
+      const itemsToMove: Array<{
+        project: string;
+        subpath: string;
+        label: string;
+        isFolder?: boolean;
+      }> = Array.isArray(data.items) && data.items.length > 0
+        ? data.items
+        : data.subpath
+        ? [
+            {
+              project: data.project,
+              subpath: data.subpath,
+              label: data.label,
+              isFolder: data.isFolder,
+            },
+          ]
+        : [];
+
+      if (itemsToMove.length === 0) return;
+
+      let movedCount = 0;
+      for (const item of itemsToMove) {
+        if (!item.project || !item.subpath || !item.label) continue;
+        // Interdire le déplacement d'un dossier dans lui-même ou dans l'un de ses sous-dossiers
+        if (
+          item.project === targetProject &&
+          (item.subpath === targetFolderEntry.id ||
+            targetFolderEntry.id.startsWith(`${item.subpath}/`))
+        ) {
+          continue;
+        }
+        const destSubpath = `${targetFolderEntry.id}/${item.label}`;
+        if (item.project === targetProject && item.subpath === destSubpath) {
+          continue;
+        }
+        await moveItem(item.project, item.subpath, targetProject, destSubpath);
+        movedCount++;
+      }
+
+      if (movedCount > 0) {
+        await loadProjectFolder(activeProject, currentSubpath, currentFolderType);
+        if (isSplitViewActive && secondaryProject) {
+          await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+        }
       }
     } catch (err) {
       console.error("Erreur glisser-déposer sur dossier :", err);
+    } finally {
+      draggedPayloadRef.current = null;
     }
   };
 
   /**
-   * Dépôt d'un élément sur un segment du fil d'Ariane (Breadcrumb).
+   * Dépôt d'un ou plusieurs éléments sur un segment du fil d'Ariane (Breadcrumb)
+   * ou directement sur le fond vide d'un panneau (déplacement à la racine du répertoire courant).
    */
   const handleDropOnBreadcrumb = async (
     e: React.DragEvent,
@@ -1277,12 +1500,16 @@ export const Explorer: React.FC = () => {
   ) => {
     e.preventDefault();
     e.stopPropagation();
+    setIsExternalDragOver(false);
+
+    if (!targetProject) return;
 
     // Dépôt de fichiers externes depuis l'OS Windows
     if (
       e.dataTransfer.files &&
       e.dataTransfer.files.length > 0 &&
-      !e.dataTransfer.types.includes("application/json")
+      !e.dataTransfer.types.includes("application/json") &&
+      !draggedPayloadRef.current
     ) {
       await handleImportExternalFiles(
         e.dataTransfer.files,
@@ -1295,45 +1522,107 @@ export const Explorer: React.FC = () => {
     const raw =
       e.dataTransfer.getData("application/json") ||
       e.dataTransfer.getData("text/plain");
-    if (!raw) return;
+
     try {
-      const data = JSON.parse(raw);
-      // targetSubpath est le sous-chemin du dossier parent (ou undefined pour la racine du projet)
-      const destSubpath = targetSubpath
-        ? `${targetSubpath}/${data.label}`
-        : data.label;
-      if (data.project === targetProject && data.subpath === destSubpath) {
+      let data = raw ? JSON.parse(raw) : null;
+      if (!data && draggedPayloadRef.current) {
+        data = draggedPayloadRef.current;
+      }
+      if (!data) return;
+
+      // Cas 1 : Dépôt d'éléments provenant de la Boîte de dépôt (Inbox)
+      if (data.source === "inbox" && Array.isArray(data.items)) {
+        for (const itemName of data.items) {
+          await moveInboxItem(itemName, targetProject, targetSubpath);
+        }
+        await refreshInbox();
+        await loadProjectFolder(activeProject, currentSubpath, currentFolderType);
+        if (isSplitViewActive && secondaryProject) {
+          await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+        }
         return;
       }
-      await moveItem(data.project, data.subpath, targetProject, destSubpath);
-      await loadProjectFolder(activeProject, currentSubpath);
-      if (isSplitViewActive && secondaryProject) {
-        await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+
+      // Cas 2 : Dépôt d'un ou plusieurs éléments de la grille vers la racine du répertoire cible
+      const itemsToMove: Array<{
+        project: string;
+        subpath: string;
+        label: string;
+      }> = Array.isArray(data.items) && data.items.length > 0
+        ? data.items
+        : data.subpath
+        ? [{ project: data.project, subpath: data.subpath, label: data.label }]
+        : [];
+
+      let movedCount = 0;
+      for (const item of itemsToMove) {
+        if (!item.project || !item.subpath || !item.label) continue;
+        // Interdire le déplacement d'un dossier dans lui-même ou dans l'un de ses sous-dossiers
+        if (
+          item.project === targetProject &&
+          targetSubpath &&
+          (item.subpath === targetSubpath ||
+            targetSubpath.startsWith(`${item.subpath}/`))
+        ) {
+          continue;
+        }
+        const destSubpath = targetSubpath
+          ? `${targetSubpath}/${item.label}`
+          : item.label;
+        if (item.project === targetProject && item.subpath === destSubpath) {
+          continue;
+        }
+        await moveItem(item.project, item.subpath, targetProject, destSubpath);
+        movedCount++;
+      }
+
+      if (movedCount > 0) {
+        await loadProjectFolder(activeProject, currentSubpath, currentFolderType);
+        if (isSplitViewActive && secondaryProject) {
+          await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+        }
       }
     } catch (err) {
-      console.error("Erreur glisser-déposer sur fil d'Ariane :", err);
+      console.error("Erreur glisser-déposer sur le répertoire :", err);
+    } finally {
+      draggedPayloadRef.current = null;
     }
   };
 
   /**
-   * Dépôt direct d'un élément dans la corbeille (barre latérale droite).
+   * Dépôt direct d'un ou plusieurs éléments dans la corbeille (barre latérale droite).
    */
   const handleDropOnTrash = async (e: React.DragEvent) => {
     e.preventDefault();
     const raw =
       e.dataTransfer.getData("application/json") ||
       e.dataTransfer.getData("text/plain");
-    if (!raw) return;
     try {
-      const data = JSON.parse(raw);
-      await moveToTrash(data.project, data.subpath);
+      let data = raw ? JSON.parse(raw) : null;
+      if (!data && draggedPayloadRef.current) {
+        data = draggedPayloadRef.current;
+      }
+      if (!data) return;
+
+      const itemsToTrash: Array<{ project: string; subpath: string }> =
+        Array.isArray(data.items) && data.items.length > 0
+          ? data.items
+          : data.subpath
+          ? [{ project: data.project, subpath: data.subpath }]
+          : [];
+
+      for (const item of itemsToTrash) {
+        await moveToTrash(item.project, item.subpath);
+      }
       await refreshTrash();
-      await loadProjectFolder(activeProject, currentSubpath);
+      await loadProjectFolder(activeProject, currentSubpath, currentFolderType);
       if (isSplitViewActive && secondaryProject) {
         await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
       }
     } catch (err) {
       console.error("Erreur glisser-déposer vers la corbeille :", err);
+    } finally {
+      draggedPayloadRef.current = null;
     }
   };
 
@@ -1439,7 +1728,10 @@ export const Explorer: React.FC = () => {
           onNavigateBreadcrumb={handleNavigateBreadcrumb}
           entries={primaryGridEntries}
           selectedEntryId={selectedEntryId}
+          selectedEntryIds={selectedEntryIds}
           onSelectEntry={handleSelectGridEntry}
+          onMarqueeSelect={handleMarqueeSelect}
+          onClearSelection={handleClearSelection}
           onOpenFolderEntry={handleOpenFolderEntry}
           onOpenFileEntry={handleOpenFileEntry}
           onAddFolderOrFiles={() => setIsInboxDrawerOpen(true)}
@@ -1455,6 +1747,9 @@ export const Explorer: React.FC = () => {
           }
           onDropOnBreadcrumb={(e, targetSubpath) =>
             handleDropOnBreadcrumb(e, targetSubpath, activeProject)
+          }
+          onDropOnGridBackground={(e) =>
+            handleDropOnBreadcrumb(e, currentSubpath, activeProject)
           }
           isSplitViewActive={isSplitViewActive}
           projects={projects}
@@ -1482,6 +1777,9 @@ export const Explorer: React.FC = () => {
           }
           onDropOnSecondaryBreadcrumb={(e, targetSubpath) =>
             handleDropOnBreadcrumb(e, targetSubpath, secondaryProject)
+          }
+          onDropOnSecondaryGridBackground={(e) =>
+            handleDropOnBreadcrumb(e, secondarySubpath, secondaryProject)
           }
           previewFile={previewFile}
           onClosePreview={handleClosePreview}
@@ -1511,6 +1809,7 @@ export const Explorer: React.FC = () => {
         onRefreshInbox={refreshInbox}
         onMoveItem={handleMoveInboxItem}
         onCreateProject={handleCreateProject}
+        onConvertFolderToProject={handleConvertInboxFolderToProject}
       />
 
       {/* Menu contextuel au clic droit */}

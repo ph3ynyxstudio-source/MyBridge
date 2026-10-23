@@ -1,5 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { InboxItem, getInboxItems } from "../../../../services/storageService";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  InboxItem,
+  getInboxItems,
+  convertInboxFolderToProject,
+} from "../../../../services/storageService";
 import "./InboxDrawer.css";
 
 export type InboxSortOption = "date-desc" | "date-asc" | "name-asc" | "name-desc";
@@ -19,6 +23,10 @@ export interface InboxDrawerProps {
     targetSubpath?: string
   ) => Promise<void>;
   onCreateProject?: (projectName: string) => Promise<void>;
+  onConvertFolderToProject?: (
+    folderPath: string,
+    projectName: string
+  ) => Promise<void>;
 }
 
 function formatByteSize(bytes: number, isDir: boolean): string {
@@ -88,10 +96,12 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
   onRefreshInbox,
   onMoveItem,
   onCreateProject,
+  onConvertFolderToProject,
 }) => {
   // Sélection multiple des éléments de l'inbox
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [dragOverProject, setDragOverProject] = useState<string | null>(null);
+  const [isDragOverCreate, setIsDragOverCreate] = useState<boolean>(false);
   const [isMoving, setIsMoving] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -110,6 +120,22 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
   const [newProjectInput, setNewProjectInput] = useState<string>("");
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // Modale de conversion d'un dossier en nouveau projet par glisser-déposer
+  const [folderToConvert, setFolderToConvert] = useState<{
+    path: string;
+    defaultName: string;
+  } | null>(null);
+  const [convertNameInput, setConvertNameInput] = useState<string>("");
+  const [convertError, setConvertError] = useState<string | null>(null);
+  const [isConverting, setIsConverting] = useState<boolean>(false);
+
+  // Référence mémoire de l'élément glissé (fallback fiable WebView2)
+  const draggedItemRef = useRef<{
+    path: string;
+    nom: string;
+    est_dossier: boolean;
+  } | null>(null);
+
   useEffect(() => {
     if (!isOpen) {
       setSelectedItems(new Set());
@@ -121,6 +147,11 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
       setIsCreatingProject(false);
       setNewProjectInput("");
       setCreateError(null);
+      setFolderToConvert(null);
+      setConvertNameInput("");
+      setConvertError(null);
+      setIsConverting(false);
+      setIsDragOverCreate(false);
     }
   }, [isOpen]);
 
@@ -284,8 +315,26 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
     }
   }, [isAllSelected, processedItems]);
 
-  // Glisser-déposer depuis la liste vers un projet
-  const handleDragStart = (e: React.DragEvent, _item: InboxItem, path: string) => {
+  // Recherche un InboxItem par son chemin relatif (racine ou sous-dossier déplié)
+  const resolveInboxItemByPath = useCallback(
+    (path: string): InboxItem | undefined => {
+      const topLevel = items.find((i) => i.nom === path);
+      if (topLevel) return topLevel;
+
+      const slashIdx = path.lastIndexOf("/");
+      if (slashIdx > 0) {
+        const parent = path.slice(0, slashIdx);
+        const childName = path.slice(slashIdx + 1);
+        const children = folderChildren[parent];
+        return children?.find((c) => c.nom === childName);
+      }
+      return undefined;
+    },
+    [items, folderChildren]
+  );
+
+  // Glisser-déposer depuis la liste vers un projet ou vers la carte « Créer un nouveau projet »
+  const handleDragStart = (e: React.DragEvent, item: InboxItem, path: string) => {
     let itemsToDrag: string[];
     if (selectedItems.has(path)) {
       itemsToDrag = Array.from(selectedItems);
@@ -294,13 +343,130 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
       setSelectedItems(new Set([path]));
     }
 
+    draggedItemRef.current = {
+      path,
+      nom: item.nom,
+      est_dossier: item.est_dossier,
+    };
+
     const payload = JSON.stringify({
       source: "inbox",
       items: itemsToDrag,
+      primaryItem: {
+        path,
+        nom: item.nom,
+        est_dossier: item.est_dossier,
+      },
     });
     e.dataTransfer.setData("application/json", payload);
     e.dataTransfer.setData("text/plain", payload);
     e.dataTransfer.effectAllowed = "move";
+  };
+
+  // Dépôt d'un dossier sur la carte « Créer un nouveau projet »
+  const handleDropOnCreateCard = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOverCreate(false);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    let candidatePath: string | null = null;
+    let candidateName: string | null = null;
+    let isCandidateFolder = false;
+
+    const raw =
+      e.dataTransfer.getData("application/json") ||
+      e.dataTransfer.getData("text/plain");
+
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed.primaryItem) {
+          candidatePath = parsed.primaryItem.path;
+          candidateName = parsed.primaryItem.nom;
+          isCandidateFolder = Boolean(parsed.primaryItem.est_dossier);
+        } else if (Array.isArray(parsed.items) && parsed.items.length > 0) {
+          candidatePath = parsed.items[0];
+        }
+      } catch {
+        // Fallback vers draggedItemRef
+      }
+    }
+
+    if (!candidatePath && draggedItemRef.current) {
+      candidatePath = draggedItemRef.current.path;
+      candidateName = draggedItemRef.current.nom;
+      isCandidateFolder = draggedItemRef.current.est_dossier;
+    }
+
+    if (!candidatePath && selectedItems.size > 0) {
+      candidatePath = Array.from(selectedItems)[0];
+    }
+
+    if (!candidatePath) return;
+
+    if (!isCandidateFolder) {
+      const found = resolveInboxItemByPath(candidatePath);
+      if (found?.est_dossier) {
+        isCandidateFolder = true;
+        candidateName = found.nom;
+      }
+    }
+
+    if (!isCandidateFolder) {
+      setErrorMsg(
+        "Seul un dossier peut être converti directement en nouveau projet. Glissez un dossier sur cette carte."
+      );
+      return;
+    }
+
+    const baseName =
+      candidateName || candidatePath.split("/").pop() || candidatePath;
+    setFolderToConvert({
+      path: candidatePath,
+      defaultName: baseName,
+    });
+    setConvertNameInput(baseName);
+    setConvertError(null);
+  };
+
+  // Validation de la modale de conversion d'un dossier en nouveau projet
+  const handleConfirmConvertFolder = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!folderToConvert) return;
+
+    const trimmed = convertNameInput.trim();
+    if (!trimmed) {
+      setConvertError("Le nom du projet ne peut pas être vide.");
+      return;
+    }
+    if (projects.includes(trimmed)) {
+      setConvertError("Un projet portant ce nom existe déjà.");
+      return;
+    }
+
+    setIsConverting(true);
+    setConvertError(null);
+    try {
+      if (onConvertFolderToProject) {
+        await onConvertFolderToProject(folderToConvert.path, trimmed);
+      } else {
+        await convertInboxFolderToProject(folderToConvert.path, trimmed);
+        onRefreshInbox();
+      }
+      const sourceLabel = folderToConvert.defaultName;
+      setFolderToConvert(null);
+      setConvertNameInput("");
+      setSelectedItems(new Set());
+      setSuccessMsg(
+        `Dossier « ${sourceLabel} » converti en projet « ${trimmed} » avec ses 4 sous-dossiers structurels.`
+      );
+    } catch (err: unknown) {
+      setConvertError(typeof err === "string" ? err : String(err));
+    } finally {
+      setIsConverting(false);
+    }
   };
 
   // Dépôt d'éléments sur un projet cible
@@ -747,8 +913,25 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
               );
             })}
 
-            {/* CARTE : CRÉER UN NOUVEAU PROJET */}
-            <div className={`inbox-drop-card inbox-drop-card--create ${isCreatingProject ? "inbox-drop-card--creating" : ""}`}>
+            {/* CARTE : CRÉER UN NOUVEAU PROJET (supporte le clic ET le dépôt d'un dossier à convertir) */}
+            <div
+              className={`inbox-drop-card inbox-drop-card--create ${
+                isCreatingProject ? "inbox-drop-card--creating" : ""
+              } ${isDragOverCreate ? "inbox-drop-card--over" : ""}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+              }}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                setIsDragOverCreate(true);
+              }}
+              onDragLeave={(e) => {
+                if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                setIsDragOverCreate(false);
+              }}
+              onDrop={handleDropOnCreateCard}
+            >
               {isCreatingProject ? (
                 <form
                   className="inbox-drop-card__form"
@@ -791,7 +974,7 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                   type="button"
                   className="inbox-drop-card__create-btn"
                   onClick={() => setIsCreatingProject(true)}
-                  title="Créer un nouveau projet"
+                  title="Créer un nouveau projet ou glisser un dossier ici pour le convertir"
                 >
                   <div className="inbox-drop-card__create-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -801,13 +984,106 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                   </div>
                   <span className="inbox-drop-card__create-label">Créer un nouveau projet</span>
                   <span className="inbox-drop-card__create-hint">
-                    Ajoutez un projet pour recevoir des dépôts
+                    {isDragOverCreate
+                      ? "Relâchez le dossier pour le convertir en projet"
+                      : "Cliquez ou déposez un dossier ici pour le convertir"}
                   </span>
                 </button>
               )}
             </div>
           </div>
         </section>
+
+        {/* MODALE DE CONFIRMATION : CONVERSION D'UN DOSSIER EN PROJET */}
+        {folderToConvert && (
+          <div
+            className="inbox-convert-modal__backdrop"
+            onClick={() => {
+              if (!isConverting) {
+                setFolderToConvert(null);
+                setConvertError(null);
+              }
+            }}
+          >
+            <div
+              className="inbox-convert-modal"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="inbox-convert-modal-title"
+            >
+              <div className="inbox-convert-modal__header">
+                <div className="inbox-convert-modal__icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    <line x1="12" y1="11" x2="12" y2="17" />
+                    <line x1="9" y1="14" x2="15" y2="14" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 id="inbox-convert-modal-title" className="inbox-convert-modal__title">
+                    Voulez-vous convertir ce dossier en nouveau projet ?
+                  </h3>
+                  <p className="inbox-convert-modal__subtitle">
+                    Dossier source : <strong>{folderToConvert.path}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <p className="inbox-convert-modal__description">
+                Les 4 dossiers structurels (<code>01-Docs</code>, <code>02-Assets</code>,{" "}
+                <code>03-Sessions</code>, <code>99-Archive</code>) seront automatiquement initialisés
+                et l'ensemble des fichiers du dossier y seront déplacés proprement.
+              </p>
+
+              <form
+                className="inbox-convert-modal__form"
+                onSubmit={(e) => void handleConfirmConvertFolder(e)}
+              >
+                <label className="inbox-convert-modal__label" htmlFor="convert-project-name">
+                  Nom du nouveau projet
+                </label>
+                <input
+                  id="convert-project-name"
+                  type="text"
+                  className="inbox-convert-modal__input"
+                  value={convertNameInput}
+                  onChange={(e) => {
+                    setConvertNameInput(e.target.value);
+                    setConvertError(null);
+                  }}
+                  placeholder="Nom du projet..."
+                  disabled={isConverting}
+                  autoFocus
+                />
+                {convertError && (
+                  <div className="inbox-convert-modal__error">{convertError}</div>
+                )}
+
+                <div className="inbox-convert-modal__actions">
+                  <button
+                    type="button"
+                    className="inbox-workspace__btn inbox-workspace__btn--ghost"
+                    disabled={isConverting}
+                    onClick={() => {
+                      setFolderToConvert(null);
+                      setConvertError(null);
+                    }}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    className="inbox-workspace__btn inbox-workspace__btn--primary"
+                    disabled={isConverting}
+                  >
+                    {isConverting ? "Conversion..." : "Valider et créer le projet"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

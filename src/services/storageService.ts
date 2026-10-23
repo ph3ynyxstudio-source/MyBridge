@@ -108,6 +108,20 @@ export async function createProject(projectName: string): Promise<string> {
 }
 
 /**
+ * Convertit un dossier de la Boîte de dépôt (`inbox/{folderPath}`) en un nouveau projet
+ * sous `projects/{projectName}` avec ses 4 dossiers structurels (`01-Docs`, `02-Assets`, `03-Sessions`, `99-Archive`).
+ */
+export async function convertInboxFolderToProject(
+  folderPath: string,
+  projectName: string
+): Promise<string> {
+  return invoke<string>("convert_inbox_folder_to_project", {
+    folderPath: folderPath.trim(),
+    projectName: projectName.trim(),
+  });
+}
+
+/**
  * Renomme un projet existant dans projects/.
  */
 export async function renameProject(

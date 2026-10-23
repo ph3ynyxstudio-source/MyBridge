@@ -4,10 +4,11 @@ import "./FolderCard.css";
 export type TileKind = "folder" | "image" | "file" | "add";
 
 export interface FolderCardProps {
+  entryId?: string;
   label: string;
   kind?: TileKind;
   selected?: boolean;
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent) => void;
   onDoubleClick?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   draggable?: boolean;
@@ -18,6 +19,7 @@ export interface FolderCardProps {
 }
 
 export const FolderCard: React.FC<FolderCardProps> = ({
+  entryId,
   label,
   kind = "folder",
   selected = false,
@@ -37,6 +39,8 @@ export const FolderCard: React.FC<FolderCardProps> = ({
     <div
       role="button"
       tabIndex={0}
+      data-entry-id={entryId}
+      data-folder={kind === "folder" ? "true" : undefined}
       className={[
         "folder-card",
         selected ? "folder-card--selected" : "",
@@ -45,14 +49,20 @@ export const FolderCard: React.FC<FolderCardProps> = ({
       ]
         .filter(Boolean)
         .join(" ")}
-      onClick={onClick}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick?.(e);
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onClick?.();
+          onClick?.(e as unknown as React.MouseEvent);
         }
       }}
-      onDoubleClick={onDoubleClick}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onDoubleClick?.();
+      }}
       onContextMenu={(e) => {
         if (onContextMenu) {
           e.preventDefault();
@@ -65,26 +75,40 @@ export const FolderCard: React.FC<FolderCardProps> = ({
         e.stopPropagation();
         onDragStart?.(e);
       }}
+      onDragEnter={(e) => {
+        if (kind === "folder") {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragOver(true);
+        }
+      }}
       onDragOver={(e) => {
         if (kind === "folder") {
           e.preventDefault();
           e.stopPropagation();
           e.dataTransfer.dropEffect = "move";
-          setIsDragOver(true);
+          if (!isDragOver) {
+            setIsDragOver(true);
+          }
         }
         onDragOver?.(e);
       }}
       onDragLeave={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(false);
+        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+        if (kind === "folder") {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragOver(false);
+        }
         onDragLeave?.(e);
       }}
       onDrop={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(false);
-        onDrop?.(e);
+        if (kind === "folder") {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragOver(false);
+          onDrop?.(e);
+        }
       }}
       title={label}
     >

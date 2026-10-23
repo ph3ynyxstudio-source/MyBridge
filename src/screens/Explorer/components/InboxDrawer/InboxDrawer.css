@@ -878,3 +878,151 @@
   gap: 8px;
   margin-top: 4px;
 }
+
+.inbox-drop-card--create.inbox-drop-card--over {
+  border-style: solid;
+  border-color: var(--accent-blue);
+  background-color: var(--accent-blue-muted);
+  box-shadow: 0 0 24px var(--accent-blue-border);
+}
+
+/* =========================================================
+   MODALE DE CONFIRMATION : CONVERSION DOSSIER -> PROJET
+   ========================================================= */
+
+.inbox-convert-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background-color: rgba(4, 7, 14, 0.72);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeInModal 0.16s ease-out;
+}
+
+@keyframes fadeInModal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.inbox-convert-modal {
+  width: 100%;
+  max-width: 480px;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--accent-blue-border);
+  border-radius: var(--radius-md);
+  padding: 24px 28px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.inbox-convert-modal__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.inbox-convert-modal__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-sm);
+  background-color: var(--accent-blue-muted);
+  border: 1px solid var(--accent-blue-border);
+  color: var(--accent-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.inbox-convert-modal__icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.inbox-convert-modal__title {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.inbox-convert-modal__subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.inbox-convert-modal__description {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+}
+
+.inbox-convert-modal__description code {
+  font-family: monospace;
+  font-size: 11.5px;
+  color: var(--accent-blue);
+  background-color: var(--accent-blue-muted);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.inbox-convert-modal__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inbox-convert-modal__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.03em;
+}
+
+.inbox-convert-modal__input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background-color: var(--input-bg);
+  border: 1px solid var(--border-panel);
+  color: var(--input-text);
+  font-size: 13.5px;
+  font-weight: 600;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.14s ease;
+}
+
+.inbox-convert-modal__input:focus {
+  border-color: var(--accent-blue);
+}
+
+.inbox-convert-modal__error {
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.inbox-convert-modal__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}

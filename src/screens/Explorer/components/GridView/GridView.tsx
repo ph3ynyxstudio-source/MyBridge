@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { FolderCard, TileKind } from "../../../../components/FolderCard/FolderCard";
 import { Breadcrumb } from "../Breadcrumb/Breadcrumb";
 import { PreviewDrawer, PreviewFile } from "../PreviewDrawer/PreviewDrawer";
@@ -23,7 +23,10 @@ export interface GridViewProps {
   onNavigateBreadcrumb?: (targetSubpath?: string) => void;
   entries: GridEntry[];
   selectedEntryId: string;
-  onSelectEntry: (entry: GridEntry) => void;
+  selectedEntryIds?: Set<string>;
+  onSelectEntry: (entry: GridEntry, e?: React.MouseEvent) => void;
+  onMarqueeSelect?: (selectedIds: string[], additive: boolean) => void;
+  onClearSelection?: () => void;
   onOpenFolderEntry?: (entry: GridEntry) => void;
   onOpenFileEntry?: (entry: GridEntry) => void;
   onAddFolderOrFiles: () => void;
@@ -34,6 +37,7 @@ export interface GridViewProps {
   onDragStart?: (e: React.DragEvent, entry: GridEntry) => void;
   onDropOnFolder?: (e: React.DragEvent, targetFolderEntry: GridEntry) => void;
   onDropOnBreadcrumb?: (e: React.DragEvent, targetSubpath?: string) => void;
+  onDropOnGridBackground?: (e: React.DragEvent) => void;
 
   // Split-View (Double affichage 2 projets distincts)
   isSplitViewActive: boolean;
@@ -54,6 +58,7 @@ export interface GridViewProps {
   onSecondaryDragStart?: (e: React.DragEvent, entry: GridEntry) => void;
   onSecondaryDropOnFolder?: (e: React.DragEvent, targetFolderEntry: GridEntry) => void;
   onDropOnSecondaryBreadcrumb?: (e: React.DragEvent, targetSubpath?: string) => void;
+  onDropOnSecondaryGridBackground?: (e: React.DragEvent) => void;
 
   // Visualiseur bivalent (PreviewDrawer)
   previewFile?: PreviewFile | null;
@@ -69,7 +74,10 @@ export const GridView: React.FC<GridViewProps> = ({
   onNavigateBreadcrumb,
   entries,
   selectedEntryId,
+  selectedEntryIds,
   onSelectEntry,
+  onMarqueeSelect,
+  onClearSelection,
   onOpenFolderEntry,
   onOpenFileEntry,
   onAddFolderOrFiles,
@@ -78,6 +86,7 @@ export const GridView: React.FC<GridViewProps> = ({
   onDragStart,
   onDropOnFolder,
   onDropOnBreadcrumb,
+  onDropOnGridBackground,
   isSplitViewActive,
   projects,
   secondaryProject,
@@ -96,18 +105,161 @@ export const GridView: React.FC<GridViewProps> = ({
   onSecondaryDragStart,
   onSecondaryDropOnFolder,
   onDropOnSecondaryBreadcrumb,
+  onDropOnSecondaryGridBackground,
   previewFile,
   onClosePreview,
   onOpenInSystem,
   onFileSizeUpdated,
 }) => {
   const isRightPanelOpen = Boolean(previewFile || isSplitViewActive);
+  const primaryContainerRef = useRef<HTMLDivElement>(null);
+
+  // États de retour visuel lors du survol en Glisser-Déposer sur le fond vide des panneaux
+  const [isPrimaryDragOver, setIsPrimaryDragOver] = useState(false);
+  const [isSecondaryDragOver, setIsSecondaryDragOver] = useState(false);
+
+  // État visuel du rectangle de sélection (Marquee Selection type Explorateur Windows)
+  const [marqueeRect, setMarqueeRect] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  const handlePrimaryMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // Uniquement clic gauche
+      if (e.button !== 0) return;
+
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        target.closest(".folder-card, .breadcrumb, button, input, select, a")
+      ) {
+        return;
+      }
+
+      const container = primaryContainerRef.current;
+      if (!container) return;
+
+      const isAdditive = e.ctrlKey || e.metaKey || e.shiftKey;
+      const containerRect = container.getBoundingClientRect();
+      const startX = e.clientX - containerRect.left + container.scrollLeft;
+      const startY = e.clientY - containerRect.top + container.scrollTop;
+      const startClientX = e.clientX;
+      const startClientY = e.clientY;
+
+      let hasDragged = false;
+
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        const currentContainerRect = container.getBoundingClientRect();
+        const currentX =
+          moveEvent.clientX - currentContainerRect.left + container.scrollLeft;
+        const currentY =
+          moveEvent.clientY - currentContainerRect.top + container.scrollTop;
+
+        const dist = Math.hypot(
+          moveEvent.clientX - startClientX,
+          moveEvent.clientY - startClientY
+        );
+
+        if (!hasDragged && dist < 4) return;
+        hasDragged = true;
+
+        const left = Math.min(startX, currentX);
+        const top = Math.min(startY, currentY);
+        const width = Math.abs(currentX - startX);
+        const height = Math.abs(currentY - startY);
+
+        setMarqueeRect({ left, top, width, height });
+
+        // Calcul d'intersection en coordonnées viewport avec chaque tuile de la grille
+        const boxLeft = Math.min(startClientX, moveEvent.clientX);
+        const boxRight = Math.max(startClientX, moveEvent.clientX);
+        const boxTop = Math.min(startClientY, moveEvent.clientY);
+        const boxBottom = Math.max(startClientY, moveEvent.clientY);
+
+        const cardNodes = container.querySelectorAll<HTMLElement>(
+          ".folder-card[data-entry-id]"
+        );
+        const intersectedIds: string[] = [];
+
+        cardNodes.forEach((node) => {
+          const id = node.getAttribute("data-entry-id");
+          if (!id) return;
+          const cardRect = node.getBoundingClientRect();
+          const intersects =
+            boxLeft < cardRect.right &&
+            boxRight > cardRect.left &&
+            boxTop < cardRect.bottom &&
+            boxBottom > cardRect.top;
+          if (intersects) {
+            intersectedIds.push(id);
+          }
+        });
+
+        onMarqueeSelect?.(intersectedIds, isAdditive);
+      };
+
+      const handleMouseUp = () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+        setMarqueeRect(null);
+
+        if (!hasDragged && !isAdditive) {
+          onClearSelection?.();
+        }
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    },
+    [onMarqueeSelect, onClearSelection]
+  );
+
+  const selectedCount = selectedEntryIds ? selectedEntryIds.size : selectedEntryId ? 1 : 0;
 
   return (
     <section className={`grid-view ${isRightPanelOpen ? "grid-view--split-active" : ""}`}>
       {/* PANNEAU PRINCIPAL (PROJET 1) */}
       <div
-        className={`grid-view__primary ${isRightPanelOpen ? "grid-view__primary--split" : ""}`}
+        ref={primaryContainerRef}
+        className={`grid-view__primary ${
+          isRightPanelOpen ? "grid-view__primary--split" : ""
+        } ${marqueeRect ? "grid-view__primary--selecting" : ""} ${
+          isPrimaryDragOver ? "grid-view__primary--drag-over" : ""
+        }`}
+        onMouseDown={handlePrimaryMouseDown}
+        onDragOver={(e) => {
+          if (!hasActiveProject || !onDropOnGridBackground) return;
+          const target = e.target as HTMLElement | null;
+          if (target && target.closest('.folder-card[data-folder="true"], .breadcrumb')) {
+            if (isPrimaryDragOver) setIsPrimaryDragOver(false);
+            return;
+          }
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          if (!isPrimaryDragOver) {
+            setIsPrimaryDragOver(true);
+          }
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setIsPrimaryDragOver(false);
+          }
+        }}
+        onDrop={(e) => {
+          if (!hasActiveProject || !onDropOnGridBackground) return;
+          const target = e.target as HTMLElement | null;
+          if (target && target.closest('.folder-card[data-folder="true"], .breadcrumb')) {
+            setIsPrimaryDragOver(false);
+            return;
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          setIsPrimaryDragOver(false);
+          onDropOnGridBackground(e);
+        }}
         onContextMenu={(e) => {
           if (onContextMenuGrid) {
             e.preventDefault();
@@ -126,13 +278,33 @@ export const GridView: React.FC<GridViewProps> = ({
           </div>
         ) : (
           <>
-            {/* Fil d'Ariane de navigation dans le projet principal */}
-            <Breadcrumb
-              projectName={activeProject || ""}
-              subpath={currentPathLabel}
-              onNavigate={onNavigateBreadcrumb || (() => {})}
-              onDropOnSegment={onDropOnBreadcrumb}
-            />
+            {/* Barre supérieure : Fil d'Ariane + Indicateur de multisélection */}
+            <div className="grid-view__top-row">
+              <Breadcrumb
+                projectName={activeProject || ""}
+                subpath={currentPathLabel}
+                onNavigate={onNavigateBreadcrumb || (() => {})}
+                onDropOnSegment={onDropOnBreadcrumb}
+              />
+              {selectedCount > 1 && (
+                <div className="grid-view__selection-badge">
+                  <span>{selectedCount} éléments sélectionnés</span>
+                  {onClearSelection && (
+                    <button
+                      type="button"
+                      className="grid-view__selection-clear"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClearSelection();
+                      }}
+                      title="Effacer la sélection"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Contenu du répertoire : Tuiles de dossiers, fichiers et tuile d'action (+) */}
             {entries.length === 0 ? (
@@ -147,14 +319,17 @@ export const GridView: React.FC<GridViewProps> = ({
             ) : (
               <div className="grid-view__tiles">
                 {entries.map((entry) => {
-                  const isSelected = entry.id === selectedEntryId;
+                  const isSelected = selectedEntryIds
+                    ? selectedEntryIds.has(entry.id)
+                    : entry.id === selectedEntryId;
                   return (
                     <FolderCard
                       key={entry.id}
+                      entryId={entry.id}
                       label={entry.label}
                       kind={entry.kind}
                       selected={isSelected}
-                      onClick={() => onSelectEntry(entry)}
+                      onClick={(e) => onSelectEntry(entry, e)}
                       onDoubleClick={() => {
                         if (entry.isFolder) {
                           onOpenFolderEntry?.(entry);
@@ -164,8 +339,14 @@ export const GridView: React.FC<GridViewProps> = ({
                       }}
                       draggable={true}
                       onDragStart={(e) => onDragStart?.(e, entry)}
+                      onDragOver={() => {
+                        if (entry.isFolder && isPrimaryDragOver) {
+                          setIsPrimaryDragOver(false);
+                        }
+                      }}
                       onDrop={(e) => {
                         if (entry.isFolder && onDropOnFolder) {
+                          setIsPrimaryDragOver(false);
                           onDropOnFolder(e, entry);
                         }
                       }}
@@ -184,10 +365,24 @@ export const GridView: React.FC<GridViewProps> = ({
                   label={UI_TERMS.gridView.addTileLabel}
                   kind="add"
                   selected={false}
-                  onClick={onAddFolderOrFiles}
+                  onClick={() => onAddFolderOrFiles()}
                   onDoubleClick={onAddFolderOrFiles}
                 />
               </div>
+            )}
+
+            {/* Rectangle visuel de sélection (Marquee Selection) */}
+            {marqueeRect && (
+              <div
+                className="grid-view__marquee"
+                style={{
+                  left: `${marqueeRect.left}px`,
+                  top: `${marqueeRect.top}px`,
+                  width: `${marqueeRect.width}px`,
+                  height: `${marqueeRect.height}px`,
+                }}
+                aria-hidden="true"
+              />
             )}
           </>
         )}
@@ -203,7 +398,39 @@ export const GridView: React.FC<GridViewProps> = ({
         />
       ) : isSplitViewActive ? (
         <aside
-          className="grid-view__secondary"
+          className={`grid-view__secondary ${
+            isSecondaryDragOver ? "grid-view__secondary--drag-over" : ""
+          }`}
+          onDragOver={(e) => {
+            if (!secondaryProject || !onDropOnSecondaryGridBackground) return;
+            const target = e.target as HTMLElement | null;
+            if (target && target.closest('.folder-card[data-folder="true"], .breadcrumb')) {
+              if (isSecondaryDragOver) setIsSecondaryDragOver(false);
+              return;
+            }
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            if (!isSecondaryDragOver) {
+              setIsSecondaryDragOver(true);
+            }
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setIsSecondaryDragOver(false);
+            }
+          }}
+          onDrop={(e) => {
+            if (!secondaryProject || !onDropOnSecondaryGridBackground) return;
+            const target = e.target as HTMLElement | null;
+            if (target && target.closest('.folder-card[data-folder="true"], .breadcrumb')) {
+              setIsSecondaryDragOver(false);
+              return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            setIsSecondaryDragOver(false);
+            onDropOnSecondaryGridBackground(e);
+          }}
           onContextMenu={(e) => {
             if (onContextMenuSecondaryGrid) {
               e.preventDefault();
@@ -306,8 +533,14 @@ export const GridView: React.FC<GridViewProps> = ({
                       onDragStart?.(e, sub);
                     }
                   }}
+                  onDragOver={() => {
+                    if (sub.isFolder && isSecondaryDragOver) {
+                      setIsSecondaryDragOver(false);
+                    }
+                  }}
                   onDrop={(e) => {
                     if (sub.isFolder) {
+                      setIsSecondaryDragOver(false);
                       if (onSecondaryDropOnFolder) {
                         onSecondaryDropOnFolder(e, sub);
                       } else if (onDropOnFolder) {

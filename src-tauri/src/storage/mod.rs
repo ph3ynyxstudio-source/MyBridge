@@ -523,6 +523,95 @@ pub fn create_project(app: AppHandle, project_name: String) -> Result<String, St
     Ok(valid_name)
 }
 
+/// Convertit un dossier présent dans la Boîte de dépôt (`inbox/{folder_path}`) en un nouveau projet
+/// sous `projects/{project_name}`, initialise les 4 dossiers structurels (`01-Docs`, `02-Assets`,
+/// `03-Sessions`, `99-Archive`) et y déplace proprement tous les fichiers et sous-dossiers.
+#[tauri::command]
+pub fn convert_inbox_folder_to_project(
+    app: AppHandle,
+    folder_path: String,
+    project_name: String,
+) -> Result<String, String> {
+    let (inbox_dir, projects_dir) = init_storage_dirs(&app)?;
+    let valid_folder = validate_relative_subpath(Some(folder_path))?;
+    if valid_folder.as_os_str().is_empty() {
+        return Err("Le chemin du dossier source ne peut pas être vide.".to_string());
+    }
+
+    let source_dir = inbox_dir.join(&valid_folder);
+    if !source_dir.exists() || !source_dir.is_dir() {
+        return Err("Le dossier sélectionné est introuvable dans la Boîte de dépôt.".to_string());
+    }
+
+    let valid_name = validate_single_name(&project_name, "project_name")?;
+    let project_dir = projects_dir.join(&valid_name);
+    if project_dir.exists() {
+        return Err(format!(
+            "Un projet nommé '{}' existe déjà dans le coffre.",
+            valid_name
+        ));
+    }
+
+    // 1. Création du projet et des 4 sous-dossiers structurels
+    fs::create_dir_all(&project_dir).map_err(|e| {
+        format!(
+            "Impossible de créer le dossier pour le projet '{}' : {}",
+            valid_name, e
+        )
+    })?;
+
+    for sub in STANDARD_SUBFOLDERS {
+        let sub_path = project_dir.join(sub);
+        fs::create_dir_all(&sub_path).map_err(|e| {
+            format!(
+                "Impossible de créer le sous-dossier standard '{}' : {}",
+                sub, e
+            )
+        })?;
+    }
+
+    // 2. Déplacement propre des fichiers et sous-dossiers du dossier source
+    let entries = fs::read_dir(&source_dir)
+        .map_err(|e| format!("Impossible de lire le dossier source : {}", e))?;
+
+    for entry_res in entries {
+        let entry = entry_res.map_err(|e| format!("Entrée illisible : {}", e))?;
+        let entry_path = entry.path();
+        let entry_name = entry.file_name().to_string_lossy().to_string();
+
+        // Si le dossier source contient déjà un sous-dossier structurel standard, fusionner son contenu
+        if entry_path.is_dir() {
+            if let Some(code) = resolve_folder_type(&entry_name) {
+                let target_std_name = match code {
+                    "docs" => "01-Docs",
+                    "assets" => "02-Assets",
+                    "sessions" => "03-Sessions",
+                    "archive" => "99-Archive",
+                    _ => &entry_name,
+                };
+                let target_std_dir = project_dir.join(target_std_name);
+                if let Ok(sub_entries) = fs::read_dir(&entry_path) {
+                    for sub_res in sub_entries.flatten() {
+                        let sub_src = sub_res.path();
+                        let sub_dst = target_std_dir.join(sub_res.file_name());
+                        move_entry_safely(&sub_src, &sub_dst)?;
+                    }
+                }
+                let _ = fs::remove_dir_all(&entry_path);
+                continue;
+            }
+        }
+
+        let dest_path = project_dir.join(&entry_name);
+        move_entry_safely(&entry_path, &dest_path)?;
+    }
+
+    // 3. Suppression du dossier source désormais vide dans l'Inbox
+    let _ = fs::remove_dir_all(&source_dir);
+
+    Ok(valid_name)
+}
+
 /// Renomme un dossier de projet existant dans le coffre `projects/`.
 #[tauri::command]
 pub fn rename_project(
