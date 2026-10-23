@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { InboxItem } from "../../../../services/storageService";
+import { InboxItem, getInboxItems } from "../../../../services/storageService";
 import "./InboxDrawer.css";
 
 export type InboxSortOption = "date-desc" | "date-asc" | "name-asc" | "name-desc";
@@ -100,6 +100,11 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
   const [sortOption, setSortOption] = useState<InboxSortOption>("date-desc");
   const [filterType, setFilterType] = useState<InboxFilterType>("all");
 
+  // État d'expansion en accordéon des dossiers de la liste
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [folderChildren, setFolderChildren] = useState<Record<string, InboxItem[]>>({});
+  const [loadingFolders, setLoadingFolders] = useState<Set<string>>(new Set());
+
   // Création de nouveau projet inline dans la grille des drop zones
   const [isCreatingProject, setIsCreatingProject] = useState<boolean>(false);
   const [newProjectInput, setNewProjectInput] = useState<string>("");
@@ -108,6 +113,9 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
   useEffect(() => {
     if (!isOpen) {
       setSelectedItems(new Set());
+      setExpandedFolders(new Set());
+      setFolderChildren({});
+      setLoadingFolders(new Set());
       setErrorMsg(null);
       setSuccessMsg(null);
       setIsCreatingProject(false);
@@ -115,6 +123,58 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
       setCreateError(null);
     }
   }, [isOpen]);
+
+  // Bascule de dépliage / repliage d'un dossier (accordéon)
+  const toggleFolderExpansion = useCallback(
+    async (folderPath: string) => {
+      const isCurrentlyExpanded = expandedFolders.has(folderPath);
+
+      setExpandedFolders((prev) => {
+        const next = new Set(prev);
+        if (isCurrentlyExpanded) {
+          next.delete(folderPath);
+        } else {
+          next.add(folderPath);
+        }
+        return next;
+      });
+
+      if (!isCurrentlyExpanded) {
+        setLoadingFolders((prev) => new Set(prev).add(folderPath));
+        try {
+          const children = await getInboxItems(folderPath);
+          setFolderChildren((prev) => ({ ...prev, [folderPath]: children }));
+        } catch (err) {
+          console.error(`Erreur lecture sous-dossier inbox '${folderPath}' :`, err);
+          setFolderChildren((prev) => ({ ...prev, [folderPath]: [] }));
+        } finally {
+          setLoadingFolders((prev) => {
+            const next = new Set(prev);
+            next.delete(folderPath);
+            return next;
+          });
+        }
+      }
+    },
+    [expandedFolders]
+  );
+
+  // Rafraîchir les sous-dossiers ouverts lorsque le contenu de l'inbox est actualisé
+  const refreshExpandedFolders = useCallback(async () => {
+    if (expandedFolders.size === 0) return;
+    for (const folderPath of Array.from(expandedFolders)) {
+      try {
+        const children = await getInboxItems(folderPath);
+        setFolderChildren((prev) => ({ ...prev, [folderPath]: children }));
+      } catch {
+        // ignore
+      }
+    }
+  }, [expandedFolders]);
+
+  useEffect(() => {
+    void refreshExpandedFolders();
+  }, [items, refreshExpandedFolders]);
 
   // Nettoyer les éléments sélectionnés qui n'existent plus dans items
   useEffect(() => {
@@ -149,6 +209,7 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
       new Set([
         "txt",
         "md",
+        "markdown",
         "log",
         "json",
         "toml",
@@ -224,13 +285,13 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
   }, [isAllSelected, processedItems]);
 
   // Glisser-déposer depuis la liste vers un projet
-  const handleDragStart = (e: React.DragEvent, item: InboxItem) => {
+  const handleDragStart = (e: React.DragEvent, _item: InboxItem, path: string) => {
     let itemsToDrag: string[];
-    if (selectedItems.has(item.nom)) {
+    if (selectedItems.has(path)) {
       itemsToDrag = Array.from(selectedItems);
     } else {
-      itemsToDrag = [item.nom];
-      setSelectedItems(new Set([item.nom]));
+      itemsToDrag = [path];
+      setSelectedItems(new Set([path]));
     }
 
     const payload = JSON.stringify({
@@ -311,6 +372,146 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
     } catch (err: unknown) {
       setCreateError(typeof err === "string" ? err : String(err));
     }
+  };
+
+  // Rendu récursif d'un élément (fichier ou dossier avec accordéon extensible)
+  const renderInboxItem = (
+    item: InboxItem,
+    parentPath = "",
+    depth = 0
+  ): React.ReactNode => {
+    const itemPath = parentPath ? `${parentPath}/${item.nom}` : item.nom;
+    const isSelected = selectedItems.has(itemPath);
+    const isFolder = item.est_dossier;
+    const isExpanded = expandedFolders.has(itemPath);
+    const isLoading = loadingFolders.has(itemPath);
+    const children = folderChildren[itemPath];
+
+    return (
+      <React.Fragment key={itemPath}>
+        <li
+          className={`inbox-workspace__item ${
+            isSelected ? "inbox-workspace__item--selected" : ""
+          } ${depth > 0 ? "inbox-workspace__item--child" : ""} ${
+            isFolder ? "inbox-workspace__item--folder" : ""
+          }`}
+          draggable={true}
+          onDragStart={(e) => handleDragStart(e, item, itemPath)}
+          onClick={() => toggleSelectItem(itemPath)}
+          onDoubleClick={(e) => {
+            if (isFolder) {
+              e.stopPropagation();
+              void toggleFolderExpansion(itemPath);
+            }
+          }}
+          title={
+            isFolder
+              ? "Double-clic pour ouvrir / fermer le dossier"
+              : item.nom
+          }
+        >
+          <div
+            className="inbox-workspace__item-checkbox"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => toggleSelectItem(itemPath)}
+              aria-label={`Sélectionner ${item.nom}`}
+            />
+          </div>
+
+          <div className="inbox-workspace__item-icon">
+            {isFolder && (
+              <span
+                className={`inbox-workspace__folder-chevron ${
+                  isExpanded ? "inbox-workspace__folder-chevron--expanded" : ""
+                }`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void toggleFolderExpansion(itemPath);
+                }}
+                title={isExpanded ? "Replier" : "Déplier"}
+                aria-hidden="true"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </span>
+            )}
+            {getItemIcon(item)}
+          </div>
+
+          <div className="inbox-workspace__item-details">
+            <span className="inbox-workspace__item-name" title={item.nom}>
+              {item.nom}
+            </span>
+            <div className="inbox-workspace__item-meta">
+              <span>{formatByteSize(item.taille, item.est_dossier)}</span>
+              {item.date_modification > 0 && (
+                <>
+                  <span>•</span>
+                  <span>{formatTimestamp(item.date_modification)}</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div
+            className="inbox-workspace__item-drag-handle"
+            title="Glissez cet élément"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="9" cy="6" r="1.5" />
+              <circle cx="15" cy="6" r="1.5" />
+              <circle cx="9" cy="12" r="1.5" />
+              <circle cx="15" cy="12" r="1.5" />
+              <circle cx="9" cy="18" r="1.5" />
+              <circle cx="15" cy="18" r="1.5" />
+            </svg>
+          </div>
+        </li>
+
+        {/* Contenu enfant en accordéon (flux naturel repoussant les éléments suivants) */}
+        {isFolder && isExpanded && (
+          <li
+            key={`${itemPath}__accordion`}
+            className="inbox-workspace__accordion-row"
+          >
+            {isLoading ? (
+              <div className="inbox-workspace__accordion-loading">
+                <svg
+                  className="inbox-workspace__spinner"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                >
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                <span>Chargement du contenu...</span>
+              </div>
+            ) : !children || children.length === 0 ? (
+              <div className="inbox-workspace__accordion-empty">
+                Dossier vide
+              </div>
+            ) : (
+              <ul className="inbox-workspace__sublist">
+                {children.map((child) =>
+                  renderInboxItem(child, itemPath, depth + 1)
+                )}
+              </ul>
+            )}
+          </li>
+        )}
+      </React.Fragment>
+    );
   };
 
   if (!isOpen) return null;
@@ -464,57 +665,7 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
               </div>
             ) : (
               <ul className="inbox-workspace__list">
-                {processedItems.map((item) => {
-                  const isSelected = selectedItems.has(item.nom);
-                  return (
-                    <li
-                      key={item.nom}
-                      className={`inbox-workspace__item ${isSelected ? "inbox-workspace__item--selected" : ""}`}
-                      draggable={true}
-                      onDragStart={(e) => handleDragStart(e, item)}
-                      onClick={() => toggleSelectItem(item.nom)}
-                    >
-                      <div className="inbox-workspace__item-checkbox" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelectItem(item.nom)}
-                          aria-label={`Sélectionner ${item.nom}`}
-                        />
-                      </div>
-
-                      <div className="inbox-workspace__item-icon">
-                        {getItemIcon(item)}
-                      </div>
-
-                      <div className="inbox-workspace__item-details">
-                        <span className="inbox-workspace__item-name" title={item.nom}>
-                          {item.nom}
-                        </span>
-                        <div className="inbox-workspace__item-meta">
-                          <span>{formatByteSize(item.taille, item.est_dossier)}</span>
-                          {item.date_modification > 0 && (
-                            <>
-                              <span>•</span>
-                              <span>{formatTimestamp(item.date_modification)}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="inbox-workspace__item-drag-handle" title="Glissez cet élément">
-                        <svg viewBox="0 0 24 24" fill="currentColor">
-                          <circle cx="9" cy="6" r="1.5" />
-                          <circle cx="15" cy="6" r="1.5" />
-                          <circle cx="9" cy="12" r="1.5" />
-                          <circle cx="15" cy="12" r="1.5" />
-                          <circle cx="9" cy="18" r="1.5" />
-                          <circle cx="15" cy="18" r="1.5" />
-                        </svg>
-                      </div>
-                    </li>
-                  );
-                })}
+                {processedItems.map((item) => renderInboxItem(item))}
               </ul>
             )}
           </div>

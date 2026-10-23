@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { UI_TERMS } from "../../../../theme/UI_TERMS";
 import { ThemeMode } from "../../../../theme/design_tokens";
+import { StandardFolderType } from "../../../../services/storageService";
 import { NewProjectInput } from "../NewProjectInput/NewProjectInput";
 import { ProjectTabPopover } from "./ProjectTabPopover";
 import "./Topbar.css";
@@ -27,7 +28,12 @@ export interface TopbarProps {
 
   // Navigation contextuelle et gestion des onglets
   activeSubpath?: string;
-  onNavigateSubfolder?: (project: string, subfolder?: string) => void;
+  activeFolderType?: StandardFolderType | null;
+  onNavigateSubfolder?: (
+    project: string,
+    subfolder?: string,
+    folderType?: StandardFolderType
+  ) => void;
   onOpenInSecondary?: (project: string) => void;
   onRenameProject?: (project: string) => void;
   onDeleteProject?: (project: string) => void;
@@ -53,6 +59,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   theme,
   onToggleTheme,
   activeSubpath,
+  activeFolderType,
   onNavigateSubfolder,
   onOpenInSecondary,
   onRenameProject,
@@ -241,9 +248,11 @@ export const Topbar: React.FC<TopbarProps> = ({
           activeSubpath={
             popoverProject.project === activeProject ? activeSubpath : undefined
           }
-          onNavigateSubfolder={(project, subfolder) => {
-            onSelectProject(project);
-            onNavigateSubfolder?.(project, subfolder);
+          activeFolderType={
+            popoverProject.project === activeProject ? activeFolderType : undefined
+          }
+          onNavigateSubfolder={(project, subfolder, folderType) => {
+            onNavigateSubfolder?.(project, subfolder, folderType);
             setPopoverProject(null);
           }}
           onOpenInSecondary={onOpenInSecondary}

@@ -2,6 +2,7 @@ import React from "react";
 import { FolderCard, TileKind } from "../../../../components/FolderCard/FolderCard";
 import { Breadcrumb } from "../Breadcrumb/Breadcrumb";
 import { PreviewDrawer, PreviewFile } from "../PreviewDrawer/PreviewDrawer";
+import { StandardFolderType } from "../../../../services/storageService";
 import { UI_TERMS } from "../../../../theme/UI_TERMS";
 import "./GridView.css";
 
@@ -10,6 +11,8 @@ export interface GridEntry {
   label: string;
   kind: TileKind;
   isFolder: boolean;
+  folderType?: StandardFolderType | null;
+  absolutePath?: string;
   size?: number;
 }
 

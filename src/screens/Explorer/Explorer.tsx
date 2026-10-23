@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { TileKind } from "../../components/FolderCard/FolderCard";
 import {
   copyItem,
@@ -18,6 +18,8 @@ import {
   readProjectContents,
   renameProject,
   saveFileBytes,
+  StandardFolderType,
+  STANDARD_FOLDER_MAP,
 } from "../../services/storageService";
 import { APP_CONFIG } from "../../theme/config";
 import { ThemeMode } from "../../theme/design_tokens";
@@ -90,6 +92,8 @@ function toGridEntry(folder: ProjectFolder): GridEntry {
     label: folder.nom,
     kind: resolveTileKind(folder),
     isFolder: folder.est_dossier,
+    folderType: folder.folder_type,
+    absolutePath: folder.chemin_absolu,
     size: folder.taille,
   };
 }
@@ -200,6 +204,7 @@ export const Explorer: React.FC = () => {
   >({});
   const [activeProject, setActiveProject] = useState<string>("");
   const [currentSubpath, setCurrentSubpath] = useState<string | undefined>(undefined);
+  const [currentFolderType, setCurrentFolderType] = useState<StandardFolderType | null>(null);
 
   const [projectContents, setProjectContents] = useState<ProjectFolder[]>([]);
   const [selectedEntryId, setSelectedEntryId] = useState<string>("");
@@ -248,26 +253,77 @@ export const Explorer: React.FC = () => {
     }
   }, []);
 
+  // Références de séquence pour annuler les retours asynchrones obsolètes
+  const loadSeqRef = useRef<number>(0);
+  const loadSecondarySeqRef = useRef<number>(0);
+  const hasInitializedRef = useRef<boolean>(false);
+
+  // Références synchronisées avec l'état de navigation actif pour éviter les fermetures obsolètes (stale closures)
+  // et empêcher que refreshProjects ne se redéclenche à chaque changement de projet/sous-dossier
+  const activeProjectRef = useRef<string>(activeProject);
+  activeProjectRef.current = activeProject;
+
+  const currentSubpathRef = useRef<string | undefined>(currentSubpath);
+  currentSubpathRef.current = currentSubpath;
+
+  const currentFolderTypeRef = useRef<StandardFolderType | null>(currentFolderType);
+  currentFolderTypeRef.current = currentFolderType;
+
   /**
-   * Charge le contenu d'un projet (et d'un sous-dossier éventuel) depuis Rust.
+   * Résout le code technique ('docs', 'assets', etc.) depuis un chemin ou identifiant de dossier.
    */
+  const resolveFolderTypeFromPath = useCallback((path?: string): StandardFolderType | null => {
+    if (!path) return null;
+    const trimmed = path.trim().toLowerCase().replace(/\\/g, "/");
+    if (trimmed === "docs" || trimmed === "01-docs" || trimmed.startsWith("01-docs/") || trimmed.endsWith("/01-docs")) return "docs";
+    if (trimmed === "assets" || trimmed === "02-assets" || trimmed.startsWith("02-assets/") || trimmed.endsWith("/02-assets")) return "assets";
+    if (trimmed === "sessions" || trimmed === "03-sessions" || trimmed.startsWith("03-sessions/") || trimmed.endsWith("/03-sessions")) return "sessions";
+    if (trimmed === "archive" || trimmed === "99-archive" || trimmed.startsWith("99-archive/") || trimmed.endsWith("/99-archive")) return "archive";
+    return null;
+  }, []);
+
   /**
-   * Charge le contenu d'un projet (et d'un sous-dossier éventuel) depuis Rust.
+   * Normalise un sous-chemin ou code technique en chemin de sous-dossier canonique (ex: 'assets' -> '02-Assets').
+   * Renvoie undefined uniquement lorsqu'on cible explicitement la racine du projet.
+   */
+  const resolveCanonicalSubpath = useCallback(
+    (subpath?: string, folderType?: StandardFolderType | null): string | undefined => {
+      const trimmed = subpath?.trim();
+      if (trimmed) {
+        const lower = trimmed.toLowerCase();
+        if (lower in STANDARD_FOLDER_MAP) {
+          return STANDARD_FOLDER_MAP[lower as StandardFolderType];
+        }
+        return trimmed;
+      }
+      if (folderType && folderType in STANDARD_FOLDER_MAP) {
+        return STANDARD_FOLDER_MAP[folderType];
+      }
+      return undefined;
+    },
+    []
+  );
+
+  /**
+   * Charge le contenu d'un projet (et d'un sous-dossier spécifique) depuis Rust.
    */
   const loadProjectFolder = useCallback(
-    async (projectName: string, subpath?: string) => {
+    async (projectName: string, subpath?: string, folderType?: StandardFolderType | null) => {
       if (!projectName) {
         setProjectContents([]);
         setSelectedEntryId("");
         return;
       }
 
+      const targetSubpath = resolveCanonicalSubpath(subpath, folderType);
+      const seq = ++loadSeqRef.current;
       try {
-        const contents = await readProjectContents(projectName, subpath);
+        const contents = await readProjectContents(projectName, targetSubpath);
+        if (seq !== loadSeqRef.current) return;
         setProjectContents(contents);
 
         // Si on lit la racine du projet, on met aussi à jour les sous-dossiers pour l'arbre et l'Inbox
-        if (!subpath) {
+        if (!targetSubpath) {
           const rootDirs = contents
             .filter((item) => item.est_dossier)
             .map((item) => item.nom);
@@ -284,11 +340,12 @@ export const Explorer: React.FC = () => {
           setSelectedEntryId("");
         }
       } catch (err) {
+        if (seq !== loadSeqRef.current) return;
         console.error("Erreur lors de la lecture du projet :", err);
         setProjectContents([]);
       }
     },
-    []
+    [resolveCanonicalSubpath]
   );
 
   /**
@@ -302,8 +359,11 @@ export const Explorer: React.FC = () => {
         return;
       }
 
+      const targetSubpath = resolveCanonicalSubpath(subpath);
+      const seq = ++loadSecondarySeqRef.current;
       try {
-        const contents = await readProjectContents(projectName, subpath);
+        const contents = await readProjectContents(projectName, targetSubpath);
+        if (seq !== loadSecondarySeqRef.current) return;
         setSecondaryContents(contents);
         if (contents.length > 0) {
           const first = contents[0];
@@ -312,16 +372,18 @@ export const Explorer: React.FC = () => {
           setSelectedSecondaryEntryId("");
         }
       } catch (err) {
+        if (seq !== loadSecondarySeqRef.current) return;
         console.error("Erreur lors de la lecture du second projet :", err);
         setSecondaryContents([]);
         setSelectedSecondaryEntryId("");
       }
     },
-    []
+    [resolveCanonicalSubpath]
   );
 
   /**
    * Charge la liste des projets depuis `projects/` et précharge leurs sous-dossiers racines.
+   * Ne réinitialise jamais le sous-dossier actif sur la racine par erreur.
    */
   const refreshProjects = useCallback(
     async (preferredProject?: string, preferredSubpath?: string) => {
@@ -353,13 +415,15 @@ export const Explorer: React.FC = () => {
 
         if (list.length === 0) {
           setActiveProject("");
+          setCurrentSubpath(undefined);
+          setCurrentFolderType(null);
           setProjectContents([]);
           setSecondaryProject("");
           setSecondaryContents([]);
           return;
         }
 
-        // Précharger les sous-dossiers de chaque projet pour le TreePanel et le sélecteur Inbox
+        // Précharger les sous-dossiers de chaque projet pour le sélecteur Inbox
         const subMapEntries = await Promise.all(
           list.map(async (proj) => {
             try {
@@ -375,14 +439,27 @@ export const Explorer: React.FC = () => {
         );
         setProjectSubfoldersMap(Object.fromEntries(subMapEntries));
 
+        const currentActive = activeProjectRef.current;
         const targetProject =
           preferredProject && list.includes(preferredProject)
             ? preferredProject
-            : activeProject && list.includes(activeProject)
-            ? activeProject
+            : currentActive && list.includes(currentActive)
+            ? currentActive
             : list[0];
 
+        // Préserve le sous-dossier actif si on actualise le projet en cours
+        const effectiveSubpath =
+          preferredSubpath !== undefined
+            ? resolveCanonicalSubpath(preferredSubpath)
+            : targetProject === currentActive
+            ? resolveCanonicalSubpath(currentSubpathRef.current, currentFolderTypeRef.current)
+            : undefined;
+
+        const effectiveFolderType = resolveFolderTypeFromPath(effectiveSubpath);
+
         setActiveProject(targetProject);
+        setCurrentSubpath(effectiveSubpath);
+        setCurrentFolderType(effectiveFolderType);
 
         // Sélection intelligente du second projet pour le Split-View
         const defaultSecondary =
@@ -394,10 +471,10 @@ export const Explorer: React.FC = () => {
           return defaultSecondary;
         });
 
-        await loadProjectFolder(targetProject, preferredSubpath);
+        await loadProjectFolder(targetProject, effectiveSubpath, effectiveFolderType);
         setNavHistory((prev) => {
           if (prev.length === 0) {
-            return [{ project: targetProject, subpath: preferredSubpath }];
+            return [{ project: targetProject, subpath: effectiveSubpath }];
           }
           return prev;
         });
@@ -406,17 +483,31 @@ export const Explorer: React.FC = () => {
         console.error("Erreur lors du chargement des projets :", err);
       }
     },
-    [activeProject, loadProjectFolder]
+    [loadProjectFolder, resolveCanonicalSubpath, resolveFolderTypeFromPath]
   );
 
   /**
-   * Initialisation au montage de l'écran Explorer.
+   * Initialisation unique au montage de l'écran Explorer.
+   * Ne se redéclenche pas lors des changements de projet ou de sous-dossier.
    */
   useEffect(() => {
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
     void refreshInbox();
     void refreshProjects();
     void refreshTrash();
   }, [refreshInbox, refreshProjects, refreshTrash]);
+
+  /**
+   * Synchronisation réactive de la grille principale avec le chemin actif
+   * (activeProject + currentSubpath + currentFolderType).
+   * Garantit que le contenu affiché correspond toujours au fil d'Ariane.
+   */
+  useEffect(() => {
+    if (!activeProject) return;
+    const targetSubpath = resolveCanonicalSubpath(currentSubpath, currentFolderType);
+    void loadProjectFolder(activeProject, targetSubpath, currentFolderType);
+  }, [activeProject, currentSubpath, currentFolderType, loadProjectFolder, resolveCanonicalSubpath]);
 
 
   /**
@@ -472,31 +563,54 @@ export const Explorer: React.FC = () => {
 
   /**
    * Navigue vers un projet et un sous-dossier, en alimentant l'historique de navigation.
+   * Accepte un sous-chemin relatif, un chemin absolu, ou un code technique ('docs', 'assets', etc.).
    */
   const navigateTo = useCallback(
-    (projectName: string, subpath?: string, replace = false) => {
+    (
+      projectName: string,
+      subpath?: string,
+      folderType?: StandardFolderType,
+      replace = false
+    ) => {
       if (!projectName) return;
+
+      const resolvedType = folderType || resolveFolderTypeFromPath(subpath);
+      const canonicalSubpath = resolveCanonicalSubpath(subpath, resolvedType);
+
       setActiveProject(projectName);
-      setCurrentSubpath(subpath);
-      void loadProjectFolder(projectName, subpath);
+      setCurrentSubpath(canonicalSubpath);
+      setCurrentFolderType(resolvedType || null);
+
+      // Charge immédiatement le dossier cible en transmettant le sous-chemin canonique exact
+      void loadProjectFolder(projectName, canonicalSubpath, resolvedType);
+
+      // Si le second projet est identique, on bascule le second sur un autre si possible
+      if (secondaryProject === projectName) {
+        const other = projects.find((p) => p !== projectName);
+        if (other) {
+          setSecondaryProject(other);
+          setSecondarySubpath(undefined);
+          void loadSecondaryProjectFolder(other, undefined);
+        }
+      }
 
       setNavHistory((prev) => {
         const current = prev[historyIndex];
         if (
           current &&
           current.project === projectName &&
-          current.subpath === subpath
+          current.subpath === canonicalSubpath
         ) {
           return prev;
         }
 
         if (replace || historyIndex === -1) {
-          return [{ project: projectName, subpath }];
+          return [{ project: projectName, subpath: canonicalSubpath }];
         }
 
         const next = [
           ...prev.slice(0, historyIndex + 1),
-          { project: projectName, subpath },
+          { project: projectName, subpath: canonicalSubpath },
         ];
         return next;
       });
@@ -507,7 +621,15 @@ export const Explorer: React.FC = () => {
         setHistoryIndex((prev) => prev + 1);
       }
     },
-    [historyIndex, loadProjectFolder]
+    [
+      historyIndex,
+      loadProjectFolder,
+      loadSecondaryProjectFolder,
+      projects,
+      resolveCanonicalSubpath,
+      resolveFolderTypeFromPath,
+      secondaryProject,
+    ]
   );
 
   const canGoBack = historyIndex > 0;
@@ -518,40 +640,36 @@ export const Explorer: React.FC = () => {
     const targetIdx = historyIndex - 1;
     const target = navHistory[targetIdx];
     if (target) {
+      const folderType = resolveFolderTypeFromPath(target.subpath);
+      const canonicalSubpath = resolveCanonicalSubpath(target.subpath, folderType);
       setHistoryIndex(targetIdx);
       setActiveProject(target.project);
-      setCurrentSubpath(target.subpath);
-      void loadProjectFolder(target.project, target.subpath);
+      setCurrentSubpath(canonicalSubpath);
+      setCurrentFolderType(folderType);
+      void loadProjectFolder(target.project, canonicalSubpath, folderType);
     }
-  }, [canGoBack, historyIndex, navHistory, loadProjectFolder]);
+  }, [canGoBack, historyIndex, navHistory, loadProjectFolder, resolveCanonicalSubpath, resolveFolderTypeFromPath]);
 
   const handleGoForward = useCallback(() => {
     if (!canGoForward) return;
     const targetIdx = historyIndex + 1;
     const target = navHistory[targetIdx];
     if (target) {
+      const folderType = resolveFolderTypeFromPath(target.subpath);
+      const canonicalSubpath = resolveCanonicalSubpath(target.subpath, folderType);
       setHistoryIndex(targetIdx);
       setActiveProject(target.project);
-      setCurrentSubpath(target.subpath);
-      void loadProjectFolder(target.project, target.subpath);
+      setCurrentSubpath(canonicalSubpath);
+      setCurrentFolderType(folderType);
+      void loadProjectFolder(target.project, canonicalSubpath, folderType);
     }
-  }, [canGoForward, historyIndex, navHistory, loadProjectFolder]);
+  }, [canGoForward, historyIndex, navHistory, loadProjectFolder, resolveCanonicalSubpath, resolveFolderTypeFromPath]);
 
   /**
-   * Sélection d'un projet depuis la Topbar.
+   * Sélection d'un projet depuis la Topbar (navigation à la racine).
    */
   const handleSelectProject = (projectName: string) => {
     navigateTo(projectName, undefined);
-
-    // Si le second projet est identique, on bascule le second sur un autre si possible
-    if (secondaryProject === projectName) {
-      const other = projects.find((p) => p !== projectName);
-      if (other) {
-        setSecondaryProject(other);
-        setSecondarySubpath(undefined);
-        void loadSecondaryProjectFolder(other, undefined);
-      }
-    }
   };
 
   /**
@@ -579,7 +697,7 @@ export const Explorer: React.FC = () => {
    */
   const handleOpenFolderEntry = (entry: GridEntry) => {
     if (!activeProject || !entry.isFolder) return;
-    navigateTo(activeProject, entry.id);
+    navigateTo(activeProject, entry.id, entry.folderType || undefined);
   };
 
   /**
@@ -1293,7 +1411,10 @@ export const Explorer: React.FC = () => {
         theme={theme}
         onToggleTheme={handleToggleTheme}
         activeSubpath={currentSubpath}
-        onNavigateSubfolder={(project, subfolder) => navigateTo(project, subfolder)}
+        activeFolderType={currentFolderType}
+        onNavigateSubfolder={(project, subfolder, folderType) =>
+          navigateTo(project, subfolder, folderType)
+        }
         onOpenInSecondary={handleOpenInSecondary}
         onRenameProject={(project) => handleStartRenameProject(project)}
         onDeleteProject={(project) => setProjectToDelete(project)}

@@ -12,21 +12,48 @@ export interface InboxItem {
 }
 
 /**
+ * Code technique invisible associé aux 4 dossiers structurels standard.
+ */
+export type StandardFolderType = "docs" | "assets" | "sessions" | "archive";
+export type FolderType = StandardFolderType | "custom" | null;
+
+/**
+ * Table de correspondance entre codes techniques et libellés standards.
+ */
+export const STANDARD_FOLDER_MAP: Record<StandardFolderType, string> = {
+  docs: "01-Docs",
+  assets: "02-Assets",
+  sessions: "03-Sessions",
+  archive: "99-Archive",
+};
+
+export const STANDARD_FOLDER_CODES: StandardFolderType[] = [
+  "docs",
+  "assets",
+  "sessions",
+  "archive",
+];
+
+/**
  * Miroir TypeScript strict de la struct Rust `ProjectFolder` (src-tauri/src/storage/mod.rs).
  */
 export interface ProjectFolder {
   nom: string;
   chemin_relatif: string;
+  chemin_absolu?: string;
+  folder_type?: StandardFolderType | null;
   taille: number;
   est_dossier: boolean;
   enfants_optionnels: ProjectFolder[] | null;
 }
 
 /**
- * Récupère la liste complète des éléments en attente dans `inbox/`.
+ * Récupère la liste complète des éléments en attente dans `inbox/` ou dans un sous-dossier de l'inbox.
  */
-export async function getInboxItems(): Promise<InboxItem[]> {
-  return invoke<InboxItem[]>("get_inbox_items");
+export async function getInboxItems(subpath?: string): Promise<InboxItem[]> {
+  const cleanSubpath =
+    subpath && subpath.trim().length > 0 ? subpath.trim() : null;
+  return invoke<InboxItem[]>("get_inbox_items", { subpath: cleanSubpath });
 }
 
 /**

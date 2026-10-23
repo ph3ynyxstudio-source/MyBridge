@@ -417,12 +417,108 @@
 }
 
 .inbox-workspace__item-icon {
-  width: 28px;
-  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  gap: 2px;
+}
+
+/* Chevron d'accordéon pour les dossiers */
+.inbox-workspace__folder-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--text-secondary);
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s ease;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.inbox-workspace__folder-chevron svg {
+  width: 12px;
+  height: 12px;
+}
+
+.inbox-workspace__folder-chevron:hover {
+  color: var(--accent-blue);
+}
+
+.inbox-workspace__folder-chevron--expanded {
+  transform: rotate(90deg);
+  color: var(--accent-blue);
+}
+
+/* Accordéon et sous-arborescence Inbox */
+.inbox-workspace__accordion-row {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.inbox-workspace__sublist {
+  list-style: none;
+  margin: 2px 0 6px 18px;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--accent-blue-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: inboxAccordionExpand 0.16s ease-out;
+}
+
+@keyframes inboxAccordionExpand {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.inbox-workspace__item--child {
+  background-color: var(--bg-topbar);
+  border-color: var(--border-subtle);
+  padding: 8px 12px;
+}
+
+.inbox-workspace__item--child:hover {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-blue-border);
+}
+
+.inbox-workspace__accordion-loading,
+.inbox-workspace__accordion-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding: 6px 14px;
+  margin: 2px 0 6px 18px;
+  border-left: 2px dashed var(--border-subtle);
+}
+
+.inbox-workspace__spinner {
+  width: 13px;
+  height: 13px;
+  animation: inboxSpinnerRotate 0.8s linear infinite;
+  color: var(--accent-blue);
+}
+
+@keyframes inboxSpinnerRotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .inbox-item__icon {

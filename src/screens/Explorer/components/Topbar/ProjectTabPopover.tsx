@@ -1,18 +1,31 @@
 import React, { useEffect, useRef } from "react";
+import { StandardFolderType } from "../../../../services/storageService";
 import "./ProjectTabPopover.css";
 
-export const STANDARD_SUBFOLDERS = [
-  "01-Docs",
-  "02-Assets",
-  "03-Sessions",
-  "99-Archive",
+export interface StructuralFolderDef {
+  code: StandardFolderType;
+  label: string;
+}
+
+export const STRUCTURAL_FOLDERS: StructuralFolderDef[] = [
+  { code: "docs", label: "01-Docs" },
+  { code: "assets", label: "02-Assets" },
+  { code: "sessions", label: "03-Sessions" },
+  { code: "archive", label: "99-Archive" },
 ];
+
+export const STANDARD_SUBFOLDERS = STRUCTURAL_FOLDERS.map((f) => f.label);
 
 export interface ProjectTabPopoverProps {
   project: string;
   x: number;
   activeSubpath?: string;
-  onNavigateSubfolder: (project: string, subfolder?: string) => void;
+  activeFolderType?: StandardFolderType | null;
+  onNavigateSubfolder: (
+    project: string,
+    subfolder?: string,
+    folderType?: StandardFolderType
+  ) => void;
   onOpenInSecondary?: (project: string) => void;
   onRename?: (project: string) => void;
   onDelete?: (project: string) => void;
@@ -67,6 +80,7 @@ export const ProjectTabPopover: React.FC<ProjectTabPopoverProps> = ({
   project,
   x,
   activeSubpath,
+  activeFolderType,
   onNavigateSubfolder,
   onOpenInSecondary,
   onRename,
@@ -118,20 +132,25 @@ export const ProjectTabPopover: React.FC<ProjectTabPopoverProps> = ({
       </header>
 
       <div className="project-tab-popover__folder-list">
-        {STANDARD_SUBFOLDERS.map((folder) => {
-          const isActive = activeSubpath === folder;
+        {STRUCTURAL_FOLDERS.map((folder) => {
+          const isActive =
+            activeFolderType === folder.code ||
+            activeSubpath === folder.label ||
+            activeSubpath === folder.code;
           return (
             <button
-              key={folder}
+              key={folder.code}
               type="button"
               className={`project-tab-popover__folder-item ${isActive ? "project-tab-popover__folder-item--active" : ""}`}
-              onClick={() => {
-                onNavigateSubfolder(project, folder);
+              onClick={(e) => {
+                e.stopPropagation();
+                onNavigateSubfolder(project, folder.label, folder.code);
                 onClose();
               }}
+              data-folder-type={folder.code}
             >
-              {getFolderIcon(folder)}
-              <span className="project-tab-popover__folder-name">{folder}</span>
+              {getFolderIcon(folder.label)}
+              <span className="project-tab-popover__folder-name">{folder.label}</span>
             </button>
           );
         })}

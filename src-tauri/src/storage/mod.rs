@@ -23,6 +23,8 @@ pub struct InboxItem {
 pub struct ProjectFolder {
     pub nom: String,
     pub chemin_relatif: String,
+    pub chemin_absolu: String,
+    pub folder_type: Option<String>,
     pub taille: u64,
     pub est_dossier: bool,
     pub enfants_optionnels: Option<Vec<ProjectFolder>>,
@@ -129,12 +131,21 @@ fn extract_modified_timestamp(metadata: &fs::Metadata) -> u64 {
         .unwrap_or(0)
 }
 
-/// Parcourt le dossier `inbox/` et renvoie la liste complète des éléments en attente.
+/// Parcourt le dossier `inbox/` (ou un sous-dossier spécifié) et renvoie la liste complète des éléments en attente.
 #[tauri::command]
-pub fn get_inbox_items(app: AppHandle) -> Result<Vec<InboxItem>, String> {
+pub fn get_inbox_items(
+    app: AppHandle,
+    subpath: Option<String>,
+) -> Result<Vec<InboxItem>, String> {
     let (inbox_dir, _) = init_storage_dirs(&app)?;
+    let clean_subpath = validate_relative_subpath(subpath)?;
+    let target_dir = inbox_dir.join(&clean_subpath);
 
-    let read_dir = fs::read_dir(&inbox_dir)
+    if !target_dir.exists() || !target_dir.is_dir() {
+        return Err("Le dossier spécifié dans la Boîte de dépôt est introuvable.".to_string());
+    }
+
+    let read_dir = fs::read_dir(&target_dir)
         .map_err(|e| format!("Erreur lors de la lecture de inbox/ : {}", e))?;
 
     let mut items = Vec::new();
@@ -192,14 +203,14 @@ pub fn move_inbox_item(
 ) -> Result<(), String> {
     let (inbox_dir, projects_dir) = init_storage_dirs(&app)?;
 
-    let valid_item = validate_single_name(&item_name, "item_name")?;
+    let valid_item = validate_relative_subpath(Some(item_name))?;
     let valid_project = validate_single_name(&target_project, "target_project")?;
     let valid_subpath = validate_relative_subpath(target_subpath)?;
 
     let source_path = inbox_dir.join(&valid_item);
     if !source_path.exists() {
         return Err(format!(
-            "L'élément '{}' est introuvable dans la Boîte de dépôt.",
+            "L'élément '{:?}' est introuvable dans la Boîte de dépôt.",
             valid_item
         ));
     }
@@ -217,11 +228,14 @@ pub fn move_inbox_item(
         return Err("Le sous-dossier cible spécifié n'existe pas.".to_string());
     }
 
-    let destination_path = target_dir.join(&valid_item);
+    let file_name = source_path
+        .file_name()
+        .ok_or_else(|| "Nom de fichier invalide".to_string())?;
+    let destination_path = target_dir.join(file_name);
     if destination_path.exists() {
         return Err(format!(
-            "Action refusée : '{}' existe déjà dans le dossier cible (aucun écrasement silencieux).",
-            valid_item
+            "Action refusée : '{:?}' existe déjà dans le dossier cible (aucun écrasement silencieux).",
+            file_name
         ));
     }
 
@@ -303,6 +317,69 @@ pub fn list_projects(app: AppHandle) -> Result<Vec<String>, String> {
     Ok(projects)
 }
 
+/// Arborescence standardisée créée automatiquement dans chaque nouveau projet.
+pub const STANDARD_SUBFOLDERS: [&str; 4] = [
+    "01-Docs",
+    "02-Assets",
+    "03-Sessions",
+    "99-Archive",
+];
+
+/// Résout le code technique invisible ('docs', 'assets', 'sessions', 'archive')
+/// associé à un dossier structurel standard.
+pub fn resolve_folder_type(folder_name: &str) -> Option<&'static str> {
+    let lower = folder_name.trim().to_lowercase();
+    if folder_name == "01-Docs" || lower.starts_with("01-docs") || lower == "docs" {
+        Some("docs")
+    } else if folder_name == "02-Assets" || lower.starts_with("02-assets") || lower == "assets" {
+        Some("assets")
+    } else if folder_name == "03-Sessions" || lower.starts_with("03-sessions") || lower == "sessions" {
+        Some("sessions")
+    } else if folder_name == "99-Archive" || lower.starts_with("99-archive") || lower == "archive" {
+        Some("archive")
+    } else {
+        None
+    }
+}
+
+/// Résout un sous-chemin de projet depuis un code technique ('docs', 'assets', etc.),
+/// un sous-chemin relatif standard ('01-Docs'), ou un chemin absolu sécurisé restreint à `project_root`.
+pub fn resolve_project_subpath(
+    project_root: &Path,
+    raw_subpath: Option<String>,
+) -> Result<PathBuf, String> {
+    let Some(raw) = raw_subpath else {
+        return Ok(project_root.to_path_buf());
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(project_root.to_path_buf());
+    }
+
+    // 1. Résolution des codes techniques structurels
+    let mapped = match trimmed.to_lowercase().as_str() {
+        "docs" => "01-Docs",
+        "assets" => "02-Assets",
+        "sessions" => "03-Sessions",
+        "archive" => "99-Archive",
+        _ => trimmed,
+    };
+
+    // 2. Si le chemin passé est absolu, s'assurer qu'il est confiné au répertoire du projet
+    let candidate = Path::new(mapped);
+    if candidate.is_absolute() {
+        if candidate.starts_with(project_root) {
+            return Ok(candidate.to_path_buf());
+        } else {
+            return Err("Chemin absolu hors du répertoire du projet interdit.".to_string());
+        }
+    }
+
+    // 3. Validation du sous-chemin relatif
+    let clean = validate_relative_subpath(Some(mapped.to_string()))?;
+    Ok(project_root.join(clean))
+}
+
 /// Lit un niveau de dossier et construit la liste des `ProjectFolder`.
 fn read_directory_entries(
     dir_path: &Path,
@@ -337,6 +414,13 @@ fn read_directory_entries(
             .to_string_lossy()
             .replace('\\', "/");
 
+        let chemin_absolu = path.to_string_lossy().replace('\\', "/");
+        let folder_type = if est_dossier {
+            resolve_folder_type(&nom).map(|s| s.to_string())
+        } else {
+            None
+        };
+
         let enfants_optionnels = if est_dossier && include_immediate_children {
             read_directory_entries(&path, project_root, false).ok()
         } else {
@@ -346,6 +430,8 @@ fn read_directory_entries(
         folders.push(ProjectFolder {
             nom,
             chemin_relatif: rel_path,
+            chemin_absolu,
+            folder_type,
             taille,
             est_dossier,
             enfants_optionnels,
@@ -362,6 +448,8 @@ fn read_directory_entries(
 }
 
 /// Lit le contenu du dossier spécifié à l'intérieur de `projects/{project_name}/{subpath}`.
+/// Accepte un sous-chemin relatif, un code technique ('docs', 'assets', 'sessions', 'archive'),
+/// ou un chemin absolu restreint au projet.
 #[tauri::command]
 pub fn read_project_contents(
     app: AppHandle,
@@ -371,8 +459,6 @@ pub fn read_project_contents(
     let (_, projects_dir) = init_storage_dirs(&app)?;
 
     let valid_project = validate_single_name(&project_name, "project_name")?;
-    let valid_subpath = validate_relative_subpath(subpath)?;
-
     let project_root = projects_dir.join(&valid_project);
     if !project_root.exists() || !project_root.is_dir() {
         return Err(format!(
@@ -381,16 +467,20 @@ pub fn read_project_contents(
         ));
     }
 
-    let target_dir = project_root.join(&valid_subpath);
+    let target_dir = resolve_project_subpath(&project_root, subpath)?;
     if !target_dir.exists() {
-        let sub_str = valid_subpath.to_string_lossy();
-        if STANDARD_SUBFOLDERS.iter().any(|&s| s == sub_str) {
-            fs::create_dir_all(&target_dir).map_err(|e| {
-                format!(
-                    "Impossible de créer le sous-dossier standard '{}' : {}",
-                    sub_str, e
-                )
-            })?;
+        if let Ok(rel) = target_dir.strip_prefix(&project_root) {
+            let rel_str = rel.to_string_lossy().replace('\\', "/");
+            if STANDARD_SUBFOLDERS.iter().any(|&s| s == rel_str) {
+                fs::create_dir_all(&target_dir).map_err(|e| {
+                    format!(
+                        "Impossible de créer le sous-dossier standard '{}' : {}",
+                        rel_str, e
+                    )
+                })?;
+            } else {
+                return Err("Le dossier demandé n'existe pas dans ce projet.".to_string());
+            }
         } else {
             return Err("Le dossier demandé n'existe pas dans ce projet.".to_string());
         }
@@ -400,14 +490,6 @@ pub fn read_project_contents(
 
     read_directory_entries(&target_dir, &project_root, true)
 }
-
-/// Arborescence standardisée créée automatiquement dans chaque nouveau projet.
-pub const STANDARD_SUBFOLDERS: [&str; 4] = [
-    "01-Docs",
-    "02-Assets",
-    "03-Sessions",
-    "99-Archive",
-];
 
 /// Crée un nouveau dossier de projet dans le coffre `projects/{project_name}`
 /// avec l'arborescence standardisée (01-Docs, 02-Assets, 03-Sessions, 99-Archive).
