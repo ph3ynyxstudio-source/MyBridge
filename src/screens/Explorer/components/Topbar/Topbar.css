@@ -112,6 +112,13 @@
   transform: translateY(-1px);
 }
 
+.topbar__brand--active {
+  background-color: var(--accent-blue-muted);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  box-shadow: 0 0 12px var(--accent-blue-border);
+}
+
 .topbar__brand-icon {
   width: 17px;
   height: 17px;
@@ -241,7 +248,8 @@
 }
 
 /* Navigation & Recherche */
-.topbar__nav-arrows {
+.topbar__nav-arrows,
+.topbar__undo-group {
   display: flex;
   align-items: center;
   gap: 4px;

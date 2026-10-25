@@ -5,9 +5,10 @@ use launcher::launch_external_app;
 use storage::{
     convert_inbox_folder_to_project, copy_item, create_project, delete_project, empty_trash,
     get_file_absolute_path, get_file_metadata, get_inbox_items, get_trash_items,
-    import_external_path, init_storage_dirs, list_projects, move_inbox_item, move_item,
-    move_to_trash, open_file_in_system, read_file_text, read_project_contents, rename_project,
-    save_file_bytes, write_text_file,
+    get_undo_redo_status, import_external_path, init_storage_dirs, list_projects, move_inbox_item,
+    move_item, move_to_trash, open_file_in_system, read_file_text, read_project_contents,
+    redo_last_action, rename_item, rename_project, save_file_bytes, undo_last_action,
+    write_text_file,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -24,6 +25,7 @@ pub fn run() {
             create_project,
             convert_inbox_folder_to_project,
             rename_project,
+            rename_item,
             delete_project,
             get_inbox_items,
             move_inbox_item,
@@ -41,7 +43,10 @@ pub fn run() {
             get_file_metadata,
             write_text_file,
             import_external_path,
-            save_file_bytes
+            save_file_bytes,
+            get_undo_redo_status,
+            undo_last_action,
+            redo_last_action
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

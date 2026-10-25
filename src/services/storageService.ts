@@ -122,6 +122,20 @@ export async function convertInboxFolderToProject(
 }
 
 /**
+ * État de la pile Undo / Redo (limitée aux 5 dernières actions).
+ */
+export interface UndoRedoStatus {
+  can_undo: boolean;
+  can_redo: boolean;
+  undo_label: string | null;
+  redo_label: string | null;
+  undo_count: number;
+  redo_count: number;
+  action_message: string | null;
+  renamed_project: [string, string] | null;
+}
+
+/**
  * Renomme un projet existant dans projects/.
  */
 export async function renameProject(
@@ -132,6 +146,42 @@ export async function renameProject(
     oldName: oldName.trim(),
     newName: newName.trim(),
   });
+}
+
+/**
+ * Renomme un fichier ou un sous-dossier à l'intérieur d'un projet.
+ */
+export async function renameItem(
+  projectName: string,
+  subpath: string,
+  newName: string
+): Promise<string> {
+  return invoke<string>("rename_item", {
+    projectName: projectName.trim(),
+    subpath: subpath.trim(),
+    newName: newName.trim(),
+  });
+}
+
+/**
+ * Récupère l'état courant de la pile Undo / Redo (5 dernières actions).
+ */
+export async function getUndoRedoStatus(): Promise<UndoRedoStatus> {
+  return invoke<UndoRedoStatus>("get_undo_redo_status");
+}
+
+/**
+ * Annule la dernière action de manipulation de fichier (Ctrl+Z).
+ */
+export async function undoLastAction(): Promise<UndoRedoStatus> {
+  return invoke<UndoRedoStatus>("undo_last_action");
+}
+
+/**
+ * Rétablit la dernière action annulée (Ctrl+Y).
+ */
+export async function redoLastAction(): Promise<UndoRedoStatus> {
+  return invoke<UndoRedoStatus>("redo_last_action");
 }
 
 /**

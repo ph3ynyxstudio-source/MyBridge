@@ -10,6 +10,7 @@ export interface TopbarProps {
   projects: string[];
   pinnedProjects: string[];
   activeProject: string;
+  isInboxActive?: boolean;
   onSelectProject: (project: string) => void;
   inboxCount: number;
   onOpenInbox: () => void;
@@ -23,6 +24,12 @@ export interface TopbarProps {
   onGoBack?: () => void;
   canGoForward?: boolean;
   onGoForward?: () => void;
+  canUndo?: boolean;
+  undoLabel?: string | null;
+  onUndo?: () => void;
+  canRedo?: boolean;
+  redoLabel?: string | null;
+  onRedo?: () => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
 
@@ -43,6 +50,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   projects,
   pinnedProjects,
   activeProject,
+  isInboxActive = false,
   onSelectProject,
   inboxCount,
   onOpenInbox,
@@ -56,6 +64,12 @@ export const Topbar: React.FC<TopbarProps> = ({
   onGoBack,
   canGoForward = false,
   onGoForward,
+  canUndo = false,
+  undoLabel,
+  onUndo,
+  canRedo = false,
+  redoLabel,
+  onRedo,
   theme,
   onToggleTheme,
   activeSubpath,
@@ -170,8 +184,12 @@ export const Topbar: React.FC<TopbarProps> = ({
         {/* Raccourci Accueil / Inbox : Bouton MyBr|dge en première position à gauche */}
         <button
           type="button"
-          className="topbar__brand"
-          onClick={onOpenInbox}
+          className={`topbar__brand ${isInboxActive ? "topbar__brand--active" : ""}`}
+          onClick={() => {
+            setPopoverProject(null);
+            setCreatePopoverX(null);
+            onOpenInbox();
+          }}
           title={UI_TERMS.topbar.inboxTitle}
           aria-label={UI_TERMS.topbar.inboxTitle}
         >
@@ -205,7 +223,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         {/* Onglets de projets épinglés suivis du bouton (+) */}
         <nav className="topbar__tabs" aria-label="Projets épinglés">
           {pinnedProjects.map((project) => {
-            const isActive = project === activeProject;
+            const isActive = !isInboxActive && project === activeProject;
             return (
               <React.Fragment key={project}>
                 <button
@@ -281,7 +299,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         </div>
       )}
 
-      {/* ZONE DROITE : Navigation Arrière/Avant, Recherche, Actualiser, Sélecteur de Thème, Options */}
+      {/* ZONE DROITE : Navigation Arrière/Avant, Undo/Redo, Recherche, Actualiser, Sélecteur de Thème, Options */}
       <div className="topbar__zone topbar__zone--right">
         <div className="topbar__nav-arrows">
           <button
@@ -316,13 +334,69 @@ export const Topbar: React.FC<TopbarProps> = ({
           </button>
         </div>
 
+        <span className="topbar__divider" aria-hidden="true" />
+
+        {/* Boutons discrets Undo / Redo (5 dernières actions de fichiers) */}
+        <div className="topbar__undo-group" role="group" aria-label="Annuler ou rétablir">
+          <button
+            type="button"
+            className={`topbar__icon-btn ${
+              !canUndo ? "topbar__icon-btn--disabled" : "topbar__icon-btn--accent"
+            }`}
+            disabled={!canUndo}
+            onClick={onUndo}
+            title={
+              undoLabel
+                ? `Annuler : ${undoLabel} (Ctrl+Z)`
+                : UI_TERMS.topbar.undo
+            }
+            aria-label={
+              undoLabel
+                ? `Annuler : ${undoLabel}`
+                : UI_TERMS.topbar.undo
+            }
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 7v6h6" />
+              <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className={`topbar__icon-btn ${
+              !canRedo ? "topbar__icon-btn--disabled" : "topbar__icon-btn--accent"
+            }`}
+            disabled={!canRedo}
+            onClick={onRedo}
+            title={
+              redoLabel
+                ? `Rétablir : ${redoLabel} (Ctrl+Y)`
+                : UI_TERMS.topbar.redo
+            }
+            aria-label={
+              redoLabel
+                ? `Rétablir : ${redoLabel}`
+                : UI_TERMS.topbar.redo
+            }
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 7v6h-6" />
+              <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
+            </svg>
+          </button>
+        </div>
+
         <div className="topbar__search-wrapper">
           <input
             type="search"
             className="topbar__search-input"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder={UI_TERMS.topbar.searchPlaceholder}
+            placeholder={
+              isInboxActive
+                ? "Rechercher dans la Boîte de dépôt..."
+                : UI_TERMS.topbar.searchPlaceholder
+            }
             aria-label={UI_TERMS.topbar.searchPlaceholder}
           />
         </div>

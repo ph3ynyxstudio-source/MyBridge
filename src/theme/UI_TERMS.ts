@@ -14,6 +14,8 @@ export const UI_TERMS = {
     settings: "Paramètres",
     navBack: "Précédent",
     navForward: "Suivant",
+    undo: "Annuler la dernière action (Ctrl+Z)",
+    redo: "Rétablir l'action annulée (Ctrl+Y)",
     searchPlaceholder: "Rechercher dans le projet...",
     refresh: "Actualiser le stockage",
     newEntry: "Nouveau dossier / fichier",

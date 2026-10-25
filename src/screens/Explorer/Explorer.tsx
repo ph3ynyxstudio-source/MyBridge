@@ -8,6 +8,7 @@ import {
   emptyTrash,
   getInboxItems,
   getTrashItems,
+  getUndoRedoStatus,
   importExternalPath,
   InboxItem,
   listProjects,
@@ -17,10 +18,14 @@ import {
   openFileInSystem,
   ProjectFolder,
   readProjectContents,
+  redoLastAction,
+  renameItem,
   renameProject,
   saveFileBytes,
   StandardFolderType,
   STANDARD_FOLDER_MAP,
+  undoLastAction,
+  UndoRedoStatus,
 } from "../../services/storageService";
 import { APP_CONFIG } from "../../theme/config";
 import { ThemeMode } from "../../theme/design_tokens";
@@ -200,9 +205,54 @@ export const Explorer: React.FC = () => {
   const [renameInputValue, setRenameInputValue] = useState<string>("");
   const [renameError, setRenameError] = useState<string | null>(null);
 
+  // Modale de renommage d'un fichier ou sous-dossier
+  const [itemToRename, setItemToRename] = useState<{
+    project: string;
+    subpath: string;
+    currentName: string;
+  } | null>(null);
+  const [itemRenameInput, setItemRenameInput] = useState<string>("");
+  const [itemRenameError, setItemRenameError] = useState<string | null>(null);
+
+  // État Undo / Redo (limité aux 5 dernières actions) + notification discrète
+  const [undoRedoStatus, setUndoRedoStatus] = useState<UndoRedoStatus>({
+    can_undo: false,
+    can_redo: false,
+    undo_label: null,
+    redo_label: null,
+    undo_count: 0,
+    redo_count: 0,
+    action_message: null,
+    renamed_project: null,
+  });
+  const [undoToast, setUndoToast] = useState<string | null>(null);
+  const undoToastTimerRef = useRef<number | null>(null);
+
+  const showUndoToast = useCallback((msg: string) => {
+    setUndoToast(msg);
+    if (undoToastTimerRef.current) {
+      window.clearTimeout(undoToastTimerRef.current);
+    }
+    undoToastTimerRef.current = window.setTimeout(() => {
+      setUndoToast(null);
+      undoToastTimerRef.current = null;
+    }, 3200);
+  }, []);
+
+  const syncUndoRedoStatus = useCallback(async () => {
+    try {
+      const status = await getUndoRedoStatus();
+      setUndoRedoStatus(status);
+    } catch (err) {
+      console.error("Erreur lecture statut Undo/Redo :", err);
+    }
+  }, []);
+
   const [projectSubfoldersMap, setProjectSubfoldersMap] = useState<
     Record<string, string[]>
   >({});
+  // Vue d'accueil principale : l'utilisateur atterrit directement sur la Boîte de dépôt au lancement
+  const [isInboxView, setIsInboxView] = useState<boolean>(true);
   const [activeProject, setActiveProject] = useState<string>("");
   const [currentSubpath, setCurrentSubpath] = useState<string | undefined>(undefined);
   const [currentFolderType, setCurrentFolderType] = useState<StandardFolderType | null>(null);
@@ -234,17 +284,16 @@ export const Explorer: React.FC = () => {
   const [selectedSecondaryEntryId, setSelectedSecondaryEntryId] = useState<string>("");
 
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
-  const [isInboxDrawerOpen, setIsInboxDrawerOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Barre latérale droite (Raccourcis d'applications VespΣr, Chr0nosV3rs)
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState<boolean>(true);
 
-  // Historique de navigation (précédent / suivant)
+  // Historique de navigation (project === "" représente la vue d'accueil Boîte de dépôt)
   const [navHistory, setNavHistory] = useState<
     Array<{ project: string; subpath?: string }>
-  >([]);
-  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  >([{ project: "" }]);
+  const [historyIndex, setHistoryIndex] = useState<number>(0);
 
   /**
    * Charge les éléments en attente dans la Boîte de dépôt (`inbox/`).
@@ -495,13 +544,6 @@ export const Explorer: React.FC = () => {
         });
 
         await loadProjectFolder(targetProject, effectiveSubpath, effectiveFolderType);
-        setNavHistory((prev) => {
-          if (prev.length === 0) {
-            return [{ project: targetProject, subpath: effectiveSubpath }];
-          }
-          return prev;
-        });
-        setHistoryIndex((prev) => (prev === -1 ? 0 : prev));
       } catch (err) {
         console.error("Erreur lors du chargement des projets :", err);
       }
@@ -519,7 +561,8 @@ export const Explorer: React.FC = () => {
     void refreshInbox();
     void refreshProjects();
     void refreshTrash();
-  }, [refreshInbox, refreshProjects, refreshTrash]);
+    void syncUndoRedoStatus();
+  }, [refreshInbox, refreshProjects, refreshTrash, syncUndoRedoStatus]);
 
   /**
    * Synchronisation réactive de la grille principale avec le chemin actif
@@ -585,8 +628,8 @@ export const Explorer: React.FC = () => {
   };
 
   /**
-   * Navigue vers un projet et un sous-dossier, en alimentant l'historique de navigation.
-   * Accepte un sous-chemin relatif, un chemin absolu, ou un code technique ('docs', 'assets', etc.).
+   * Navigue vers la Boîte de dépôt (projectName === "") ou vers un projet et un sous-dossier,
+   * en alimentant l'historique de navigation.
    */
   const navigateTo = useCallback(
     (
@@ -595,11 +638,30 @@ export const Explorer: React.FC = () => {
       folderType?: StandardFolderType,
       replace = false
     ) => {
-      if (!projectName) return;
+      if (!projectName) {
+        setIsInboxView(true);
+        setNavHistory((prev) => {
+          const current = prev[historyIndex];
+          if (current && current.project === "") {
+            return prev;
+          }
+          if (replace || historyIndex === -1) {
+            return [{ project: "" }];
+          }
+          return [...prev.slice(0, historyIndex + 1), { project: "" }];
+        });
+        if (replace || historyIndex === -1) {
+          setHistoryIndex(0);
+        } else {
+          setHistoryIndex((prev) => prev + 1);
+        }
+        return;
+      }
 
       const resolvedType = folderType || resolveFolderTypeFromPath(subpath);
       const canonicalSubpath = resolveCanonicalSubpath(subpath, resolvedType);
 
+      setIsInboxView(false);
       setActiveProject(projectName);
       setCurrentSubpath(canonicalSubpath);
       setCurrentFolderType(resolvedType || null);
@@ -663,9 +725,14 @@ export const Explorer: React.FC = () => {
     const targetIdx = historyIndex - 1;
     const target = navHistory[targetIdx];
     if (target) {
+      setHistoryIndex(targetIdx);
+      if (!target.project) {
+        setIsInboxView(true);
+        return;
+      }
+      setIsInboxView(false);
       const folderType = resolveFolderTypeFromPath(target.subpath);
       const canonicalSubpath = resolveCanonicalSubpath(target.subpath, folderType);
-      setHistoryIndex(targetIdx);
       setActiveProject(target.project);
       setCurrentSubpath(canonicalSubpath);
       setCurrentFolderType(folderType);
@@ -678,9 +745,14 @@ export const Explorer: React.FC = () => {
     const targetIdx = historyIndex + 1;
     const target = navHistory[targetIdx];
     if (target) {
+      setHistoryIndex(targetIdx);
+      if (!target.project) {
+        setIsInboxView(true);
+        return;
+      }
+      setIsInboxView(false);
       const folderType = resolveFolderTypeFromPath(target.subpath);
       const canonicalSubpath = resolveCanonicalSubpath(target.subpath, folderType);
-      setHistoryIndex(targetIdx);
       setActiveProject(target.project);
       setCurrentSubpath(canonicalSubpath);
       setCurrentFolderType(folderType);
@@ -889,11 +961,94 @@ export const Explorer: React.FC = () => {
     await moveInboxItem(itemName, targetProject, targetSubpath);
     await refreshInbox();
     await refreshProjects(targetProject, currentSubpath);
+    await syncUndoRedoStatus();
   };
+
+  /**
+   * Applique une annulation (Undo) ou un rétablissement (Redo) des 5 dernières actions de fichiers.
+   */
+  const applyUndoOrRedoStatus = useCallback(
+    async (status: UndoRedoStatus) => {
+      setUndoRedoStatus(status);
+      if (status.action_message) {
+        showUndoToast(status.action_message);
+      }
+
+      let preferredProj = activeProjectRef.current;
+      if (status.renamed_project) {
+        const [fromName, toName] = status.renamed_project;
+        setPinnedProjects((prev) => {
+          const next = prev.map((p) => (p === fromName ? toName : p));
+          try {
+            localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(next));
+          } catch {
+            // ignore
+          }
+          return next;
+        });
+        setNavHistory((prev) =>
+          prev.map((item) =>
+            item.project === fromName ? { ...item, project: toName } : item
+          )
+        );
+        if (preferredProj === fromName) {
+          preferredProj = toName;
+          setActiveProject(toName);
+        }
+        if (secondaryProject === fromName) {
+          setSecondaryProject(toName);
+        }
+      }
+
+      await refreshInbox();
+      await refreshTrash();
+      await refreshProjects(preferredProj || undefined, currentSubpathRef.current);
+      if (isSplitViewActive && secondaryProject) {
+        const secProj =
+          status.renamed_project && secondaryProject === status.renamed_project[0]
+            ? status.renamed_project[1]
+            : secondaryProject;
+        await loadSecondaryProjectFolder(secProj, secondarySubpath);
+      }
+    },
+    [
+      isSplitViewActive,
+      loadSecondaryProjectFolder,
+      refreshInbox,
+      refreshProjects,
+      refreshTrash,
+      secondaryProject,
+      secondarySubpath,
+      showUndoToast,
+    ]
+  );
+
+  const handleUndo = useCallback(async () => {
+    try {
+      const status = await undoLastAction();
+      await applyUndoOrRedoStatus(status);
+    } catch (err: unknown) {
+      const msg = typeof err === "string" ? err : String(err);
+      showUndoToast(msg);
+      await syncUndoRedoStatus();
+    }
+  }, [applyUndoOrRedoStatus, showUndoToast, syncUndoRedoStatus]);
+
+  const handleRedo = useCallback(async () => {
+    try {
+      const status = await redoLastAction();
+      await applyUndoOrRedoStatus(status);
+    } catch (err: unknown) {
+      const msg = typeof err === "string" ? err : String(err);
+      showUndoToast(msg);
+      await syncUndoRedoStatus();
+    }
+  }, [applyUndoOrRedoStatus, showUndoToast, syncUndoRedoStatus]);
 
   const handleRefreshAll = () => {
     void refreshInbox();
     void refreshProjects(activeProject, currentSubpath);
+    void syncUndoRedoStatus();
   };
 
   /**
@@ -1043,6 +1198,7 @@ export const Explorer: React.FC = () => {
         }
       }
       void refreshProjects();
+      void syncUndoRedoStatus();
     } catch (err: unknown) {
       console.error(`[Explorer] Erreur lors de la suppression du projet '${target}' :`, err);
     } finally {
@@ -1113,11 +1269,128 @@ export const Explorer: React.FC = () => {
 
       setProjectToRename(null);
       await refreshProjects(newName, currentSubpath);
+      await syncUndoRedoStatus();
     } catch (err: unknown) {
       const msg = typeof err === "string" ? err : String(err);
       setRenameError(msg);
     }
   };
+
+  /**
+   * Ouvre la modale de renommage pour un fichier ou un sous-dossier d'un projet.
+   */
+  const handleStartRenameItem = useCallback(
+    (project: string, entry: GridEntry) => {
+      if (!project || !entry.id) return;
+      setItemToRename({
+        project,
+        subpath: entry.id,
+        currentName: entry.label,
+      });
+      setItemRenameInput(entry.label);
+      setItemRenameError(null);
+    },
+    []
+  );
+
+  /**
+   * Confirmation du renommage d'un fichier ou d'un sous-dossier.
+   */
+  const handleConfirmRenameItem = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!itemToRename) return;
+
+    const { project, subpath, currentName } = itemToRename;
+    const newName = itemRenameInput.trim();
+
+    if (!newName) {
+      setItemRenameError("Le nom ne peut pas être vide.");
+      return;
+    }
+    if (newName === currentName) {
+      setItemToRename(null);
+      return;
+    }
+
+    try {
+      await renameItem(project, subpath, newName);
+      setItemToRename(null);
+      await loadProjectFolder(activeProject, currentSubpath, currentFolderType);
+      if (isSplitViewActive && secondaryProject) {
+        await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+      }
+      await syncUndoRedoStatus();
+    } catch (err: unknown) {
+      const msg = typeof err === "string" ? err : String(err);
+      setItemRenameError(msg);
+    }
+  };
+
+  /**
+   * Raccourcis clavier globaux :
+   * - Ctrl+Z : Annuler la dernière action (Undo)
+   * - Ctrl+Y ou Ctrl+Shift+Z : Rétablir l'action annulée (Redo)
+   * - F2 : Renommer le fichier ou sous-dossier sélectionné
+   */
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      const keyLower = e.key.toLowerCase();
+
+      if (isCtrlOrCmd && keyLower === "z" && !e.shiftKey) {
+        if (undoRedoStatus.can_undo) {
+          e.preventDefault();
+          void handleUndo();
+        }
+        return;
+      }
+
+      if (
+        (isCtrlOrCmd && keyLower === "y") ||
+        (isCtrlOrCmd && keyLower === "z" && e.shiftKey)
+      ) {
+        if (undoRedoStatus.can_redo) {
+          e.preventDefault();
+          void handleRedo();
+        }
+        return;
+      }
+
+      if (e.key === "F2" && !isInboxView && activeProject && selectedEntryId) {
+        const entry = primaryGridEntries.find((item) => item.id === selectedEntryId);
+        if (entry && entry.id) {
+          e.preventDefault();
+          handleStartRenameItem(activeProject, entry);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, [
+    activeProject,
+    handleRedo,
+    handleStartRenameItem,
+    handleUndo,
+    isInboxView,
+    primaryGridEntries,
+    selectedEntryId,
+    undoRedoStatus.can_redo,
+    undoRedoStatus.can_undo,
+  ]);
 
   /**
    * Ouverture du menu contextuel sur une tuile (carte de fichier ou dossier).
@@ -1256,6 +1529,7 @@ export const Explorer: React.FC = () => {
       if (isSplitViewActive && secondaryProject) {
         await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
       }
+      await syncUndoRedoStatus();
     } catch (err) {
       console.error("Erreur lors du collage :", err);
     }
@@ -1279,6 +1553,7 @@ export const Explorer: React.FC = () => {
       if (isSplitViewActive && secondaryProject) {
         await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
       }
+      await syncUndoRedoStatus();
     } catch (err) {
       console.error("Erreur déplacement vers la corbeille :", err);
     }
@@ -1291,6 +1566,7 @@ export const Explorer: React.FC = () => {
     try {
       await emptyTrash();
       await refreshTrash();
+      await syncUndoRedoStatus();
     } catch (err) {
       console.error("Erreur vidage de la corbeille :", err);
     }
@@ -1433,6 +1709,7 @@ export const Explorer: React.FC = () => {
         if (isSplitViewActive && secondaryProject) {
           await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
         }
+        await syncUndoRedoStatus();
         return;
       }
 
@@ -1481,6 +1758,7 @@ export const Explorer: React.FC = () => {
         if (isSplitViewActive && secondaryProject) {
           await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
         }
+        await syncUndoRedoStatus();
       }
     } catch (err) {
       console.error("Erreur glisser-déposer sur dossier :", err);
@@ -1540,6 +1818,7 @@ export const Explorer: React.FC = () => {
         if (isSplitViewActive && secondaryProject) {
           await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
         }
+        await syncUndoRedoStatus();
         return;
       }
 
@@ -1581,6 +1860,7 @@ export const Explorer: React.FC = () => {
         if (isSplitViewActive && secondaryProject) {
           await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
         }
+        await syncUndoRedoStatus();
       }
     } catch (err) {
       console.error("Erreur glisser-déposer sur le répertoire :", err);
@@ -1619,6 +1899,7 @@ export const Explorer: React.FC = () => {
       if (isSplitViewActive && secondaryProject) {
         await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
       }
+      await syncUndoRedoStatus();
     } catch (err) {
       console.error("Erreur glisser-déposer vers la corbeille :", err);
     } finally {
@@ -1684,9 +1965,10 @@ export const Explorer: React.FC = () => {
         projects={projects}
         pinnedProjects={pinnedProjects}
         activeProject={activeProject}
+        isInboxActive={isInboxView}
         onSelectProject={handleSelectProject}
         inboxCount={inboxItems.length}
-        onOpenInbox={() => setIsInboxDrawerOpen((prev) => !prev)}
+        onOpenInbox={() => navigateTo("")}
         onCreateProject={handleCreateProject}
         isSettingsOpen={isShortcutsOpen}
         onToggleSettings={() => setIsShortcutsOpen((prev) => !prev)}
@@ -1697,6 +1979,12 @@ export const Explorer: React.FC = () => {
         onGoBack={handleGoBack}
         canGoForward={canGoForward}
         onGoForward={handleGoForward}
+        canUndo={undoRedoStatus.can_undo}
+        undoLabel={undoRedoStatus.undo_label}
+        onUndo={() => void handleUndo()}
+        canRedo={undoRedoStatus.can_redo}
+        redoLabel={undoRedoStatus.redo_label}
+        onRedo={() => void handleRedo()}
         theme={theme}
         onToggleTheme={handleToggleTheme}
         activeSubpath={currentSubpath}
@@ -1709,6 +1997,16 @@ export const Explorer: React.FC = () => {
         onDeleteProject={(project) => setProjectToDelete(project)}
       />
 
+      {/* Notification discrète Undo / Redo */}
+      {undoToast && (
+        <div className="explorer-undo-toast" role="status" aria-live="polite">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          <span>{undoToast}</span>
+        </div>
+      )}
+
       {/* Panneau d'options (icône engrenage) : configuration des projets épinglés / favoris */}
       <ShortcutsPanel
         isOpen={isShortcutsOpen}
@@ -1719,76 +2017,89 @@ export const Explorer: React.FC = () => {
       />
 
       <main className="explorer-screen__body">
-        {/* TreePanel retiré : GridView s'étend sur tout l'espace disponible */}
-
-        <GridView
-          hasActiveProject={Boolean(activeProject)}
-          activeProject={activeProject}
-          currentPathLabel={currentSubpath}
-          onNavigateBreadcrumb={handleNavigateBreadcrumb}
-          entries={primaryGridEntries}
-          selectedEntryId={selectedEntryId}
-          selectedEntryIds={selectedEntryIds}
-          onSelectEntry={handleSelectGridEntry}
-          onMarqueeSelect={handleMarqueeSelect}
-          onClearSelection={handleClearSelection}
-          onOpenFolderEntry={handleOpenFolderEntry}
-          onOpenFileEntry={handleOpenFileEntry}
-          onAddFolderOrFiles={() => setIsInboxDrawerOpen(true)}
-          onContextMenuCard={(e, entry) =>
-            handleOpenCardContextMenu(e, entry, activeProject, currentSubpath)
-          }
-          onContextMenuGrid={(e) =>
-            handleOpenGridContextMenu(e, activeProject, currentSubpath)
-          }
-          onDragStart={(e, entry) => handleDragStart(e, entry, activeProject)}
-          onDropOnFolder={(e, target) =>
-            handleDropOnFolder(e, target, activeProject)
-          }
-          onDropOnBreadcrumb={(e, targetSubpath) =>
-            handleDropOnBreadcrumb(e, targetSubpath, activeProject)
-          }
-          onDropOnGridBackground={(e) =>
-            handleDropOnBreadcrumb(e, currentSubpath, activeProject)
-          }
-          isSplitViewActive={isSplitViewActive}
-          projects={projects}
-          secondaryProject={secondaryProject}
-          onSelectSecondaryProject={handleSelectSecondaryProject}
-          secondaryPathLabel={secondarySubpath}
-          onResetSecondarySubpath={handleResetSecondarySubpath}
-          onNavigateSecondaryBreadcrumb={handleNavigateSecondaryBreadcrumb}
-          secondaryEntries={secondaryGridEntries}
-          selectedSecondaryEntryId={selectedSecondaryEntryId}
-          onSelectSecondaryEntry={(entry) => setSelectedSecondaryEntryId(entry.id)}
-          onOpenSecondaryFolderEntry={handleOpenSecondaryFolderEntry}
-          onOpenSecondaryFileEntry={handleOpenSecondaryFileEntry}
-          onContextMenuSecondaryCard={(e, entry) =>
-            handleOpenCardContextMenu(e, entry, secondaryProject, secondarySubpath)
-          }
-          onContextMenuSecondaryGrid={(e) =>
-            handleOpenGridContextMenu(e, secondaryProject, secondarySubpath)
-          }
-          onSecondaryDragStart={(e, entry) =>
-            handleDragStart(e, entry, secondaryProject)
-          }
-          onSecondaryDropOnFolder={(e, target) =>
-            handleDropOnFolder(e, target, secondaryProject)
-          }
-          onDropOnSecondaryBreadcrumb={(e, targetSubpath) =>
-            handleDropOnBreadcrumb(e, targetSubpath, secondaryProject)
-          }
-          onDropOnSecondaryGridBackground={(e) =>
-            handleDropOnBreadcrumb(e, secondarySubpath, secondaryProject)
-          }
-          previewFile={previewFile}
-          onClosePreview={handleClosePreview}
-          onCloseSecondary={handleCloseSecondary}
-          onOpenInSystem={(project, subpath) => {
-            void openFileInSystem(project, subpath);
-          }}
-          onFileSizeUpdated={handleFileSizeUpdated}
-        />
+        {isInboxView ? (
+          <InboxDrawer
+            items={inboxItems}
+            projects={projects}
+            defaultTargetProject={activeProject}
+            availableSubfolders={projectSubfoldersMap}
+            searchQuery={searchQuery}
+            onRefreshInbox={refreshInbox}
+            onSelectProject={handleSelectProject}
+            onMoveItem={handleMoveInboxItem}
+            onCreateProject={handleCreateProject}
+            onConvertFolderToProject={handleConvertInboxFolderToProject}
+          />
+        ) : (
+          <GridView
+            hasActiveProject={Boolean(activeProject)}
+            activeProject={activeProject}
+            currentPathLabel={currentSubpath}
+            onNavigateBreadcrumb={handleNavigateBreadcrumb}
+            entries={primaryGridEntries}
+            selectedEntryId={selectedEntryId}
+            selectedEntryIds={selectedEntryIds}
+            onSelectEntry={handleSelectGridEntry}
+            onMarqueeSelect={handleMarqueeSelect}
+            onClearSelection={handleClearSelection}
+            onOpenFolderEntry={handleOpenFolderEntry}
+            onOpenFileEntry={handleOpenFileEntry}
+            onAddFolderOrFiles={() => navigateTo("")}
+            onContextMenuCard={(e, entry) =>
+              handleOpenCardContextMenu(e, entry, activeProject, currentSubpath)
+            }
+            onContextMenuGrid={(e) =>
+              handleOpenGridContextMenu(e, activeProject, currentSubpath)
+            }
+            onDragStart={(e, entry) => handleDragStart(e, entry, activeProject)}
+            onDropOnFolder={(e, target) =>
+              handleDropOnFolder(e, target, activeProject)
+            }
+            onDropOnBreadcrumb={(e, targetSubpath) =>
+              handleDropOnBreadcrumb(e, targetSubpath, activeProject)
+            }
+            onDropOnGridBackground={(e) =>
+              handleDropOnBreadcrumb(e, currentSubpath, activeProject)
+            }
+            isSplitViewActive={isSplitViewActive}
+            projects={projects}
+            secondaryProject={secondaryProject}
+            onSelectSecondaryProject={handleSelectSecondaryProject}
+            secondaryPathLabel={secondarySubpath}
+            onResetSecondarySubpath={handleResetSecondarySubpath}
+            onNavigateSecondaryBreadcrumb={handleNavigateSecondaryBreadcrumb}
+            secondaryEntries={secondaryGridEntries}
+            selectedSecondaryEntryId={selectedSecondaryEntryId}
+            onSelectSecondaryEntry={(entry) => setSelectedSecondaryEntryId(entry.id)}
+            onOpenSecondaryFolderEntry={handleOpenSecondaryFolderEntry}
+            onOpenSecondaryFileEntry={handleOpenSecondaryFileEntry}
+            onContextMenuSecondaryCard={(e, entry) =>
+              handleOpenCardContextMenu(e, entry, secondaryProject, secondarySubpath)
+            }
+            onContextMenuSecondaryGrid={(e) =>
+              handleOpenGridContextMenu(e, secondaryProject, secondarySubpath)
+            }
+            onSecondaryDragStart={(e, entry) =>
+              handleDragStart(e, entry, secondaryProject)
+            }
+            onSecondaryDropOnFolder={(e, target) =>
+              handleDropOnFolder(e, target, secondaryProject)
+            }
+            onDropOnSecondaryBreadcrumb={(e, targetSubpath) =>
+              handleDropOnBreadcrumb(e, targetSubpath, secondaryProject)
+            }
+            onDropOnSecondaryGridBackground={(e) =>
+              handleDropOnBreadcrumb(e, secondarySubpath, secondaryProject)
+            }
+            previewFile={previewFile}
+            onClosePreview={handleClosePreview}
+            onCloseSecondary={handleCloseSecondary}
+            onOpenInSystem={(project, subpath) => {
+              void openFileInSystem(project, subpath);
+            }}
+            onFileSizeUpdated={handleFileSizeUpdated}
+          />
+        )}
 
         <EcosystemSidebar
           isOpen={isRightSidebarOpen}
@@ -1798,19 +2109,6 @@ export const Explorer: React.FC = () => {
           onDropToTrash={handleDropOnTrash}
         />
       </main>
-
-      <InboxDrawer
-        isOpen={isInboxDrawerOpen}
-        items={inboxItems}
-        projects={projects}
-        defaultTargetProject={activeProject}
-        availableSubfolders={projectSubfoldersMap}
-        onClose={() => setIsInboxDrawerOpen(false)}
-        onRefreshInbox={refreshInbox}
-        onMoveItem={handleMoveInboxItem}
-        onCreateProject={handleCreateProject}
-        onConvertFolderToProject={handleConvertInboxFolderToProject}
-      />
 
       {/* Menu contextuel au clic droit */}
       {contextMenu && (
@@ -1836,6 +2134,15 @@ export const Explorer: React.FC = () => {
           onOpenInSystem={
             contextMenu.targetEntry && !contextMenu.targetEntry.isFolder
               ? handleOpenInSystemContextMenu
+              : undefined
+          }
+          onRenameItem={
+            contextMenu.targetEntry?.id
+              ? () =>
+                  handleStartRenameItem(
+                    contextMenu.targetProject,
+                    contextMenu.targetEntry!
+                  )
               : undefined
           }
           onRenameProject={
@@ -1965,6 +2272,67 @@ export const Explorer: React.FC = () => {
                   type="button"
                   className="project-modal__btn project-modal__btn--secondary"
                   onClick={() => setProjectToRename(null)}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="project-modal__btn project-modal__btn--primary"
+                >
+                  Renommer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modale de renommage d'un fichier ou d'un sous-dossier */}
+      {itemToRename && (
+        <div
+          className="project-modal-overlay"
+          onClick={() => setItemToRename(null)}
+        >
+          <div
+            className="project-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rename-item-title"
+          >
+            <form onSubmit={handleConfirmRenameItem}>
+              <div className="project-modal__header">
+                <div className="project-modal__icon project-modal__icon--accent">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </div>
+                <h3 id="rename-item-title" className="project-modal__title">
+                  Renommer « {itemToRename.currentName} »
+                </h3>
+              </div>
+
+              <div className="project-modal__body">
+                <label className="project-modal__label">Nouveau nom</label>
+                <input
+                  type="text"
+                  className="project-modal__input"
+                  value={itemRenameInput}
+                  onChange={(e) => setItemRenameInput(e.target.value)}
+                  autoFocus
+                  placeholder="Entrez le nouveau nom..."
+                />
+                {itemRenameError && (
+                  <span className="project-modal__error">{itemRenameError}</span>
+                )}
+              </div>
+
+              <div className="project-modal__footer">
+                <button
+                  type="button"
+                  className="project-modal__btn project-modal__btn--secondary"
+                  onClick={() => setItemToRename(null)}
                 >
                   Annuler
                 </button>

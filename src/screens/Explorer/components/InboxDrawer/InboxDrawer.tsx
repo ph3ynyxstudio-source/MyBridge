@@ -10,13 +10,13 @@ export type InboxSortOption = "date-desc" | "date-asc" | "name-asc" | "name-desc
 export type InboxFilterType = "all" | "images" | "texts" | "folders";
 
 export interface InboxDrawerProps {
-  isOpen: boolean;
   items: InboxItem[];
   projects: string[];
-  defaultTargetProject: string;
+  defaultTargetProject?: string;
   availableSubfolders: Record<string, string[]>;
-  onClose: () => void;
+  searchQuery?: string;
   onRefreshInbox: () => void;
+  onSelectProject?: (projectName: string) => void;
   onMoveItem: (
     itemName: string,
     targetProject: string,
@@ -88,12 +88,12 @@ function getItemIcon(item: InboxItem) {
 }
 
 export const InboxDrawer: React.FC<InboxDrawerProps> = ({
-  isOpen,
   items,
   projects,
   availableSubfolders,
-  onClose,
+  searchQuery = "",
   onRefreshInbox,
+  onSelectProject,
   onMoveItem,
   onCreateProject,
   onConvertFolderToProject,
@@ -135,25 +135,6 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
     nom: string;
     est_dossier: boolean;
   } | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) {
-      setSelectedItems(new Set());
-      setExpandedFolders(new Set());
-      setFolderChildren({});
-      setLoadingFolders(new Set());
-      setErrorMsg(null);
-      setSuccessMsg(null);
-      setIsCreatingProject(false);
-      setNewProjectInput("");
-      setCreateError(null);
-      setFolderToConvert(null);
-      setConvertNameInput("");
-      setConvertError(null);
-      setIsConverting(false);
-      setIsDragOverCreate(false);
-    }
-  }, [isOpen]);
 
   // Bascule de dépliage / repliage d'un dossier (accordéon)
   const toggleFolderExpansion = useCallback(
@@ -261,6 +242,11 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
   const processedItems = useMemo(() => {
     let list = [...items];
 
+    const query = searchQuery.trim().toLowerCase();
+    if (query) {
+      list = list.filter((i) => i.nom.toLowerCase().includes(query));
+    }
+
     if (filterType === "images") {
       list = list.filter(
         (i) => !i.est_dossier && i.extension && IMAGE_EXTS.has(i.extension.toLowerCase())
@@ -289,7 +275,7 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
     });
 
     return list;
-  }, [items, filterType, sortOption, IMAGE_EXTS, TEXT_EXTS]);
+  }, [items, searchQuery, filterType, sortOption, IMAGE_EXTS, TEXT_EXTS]);
 
   const isAllSelected =
     processedItems.length > 0 &&
@@ -680,58 +666,46 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
     );
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="inbox-workspace-backdrop" onClick={onClose}>
-      <div className="inbox-workspace" onClick={(e) => e.stopPropagation()}>
-        {/* PANNEAU GAUCHE : VUE EN LISTE AVEC MULTI-SÉLECTION */}
-        <aside className="inbox-workspace__sidebar">
-          <header className="inbox-workspace__header">
-            <div className="inbox-workspace__title-group">
-              <div className="inbox-workspace__title-row">
-                <span className="inbox-workspace__badge-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                </span>
-                <h2 className="inbox-workspace__title">Boîte de dépôt</h2>
-                {items.length > 0 && (
-                  <span className="inbox-workspace__count">{items.length}</span>
-                )}
-              </div>
-              <p className="inbox-workspace__subtitle">
-                Glissez les éléments sélectionnés sur un projet cible
-              </p>
-            </div>
-
-            <div className="inbox-workspace__header-actions">
-              <button
-                type="button"
-                className="inbox-workspace__btn inbox-workspace__btn--ghost"
-                onClick={onRefreshInbox}
-                title="Actualiser la liste"
-              >
+    <div className="inbox-workspace">
+      {/* PANNEAU GAUCHE : VUE EN LISTE AVEC MULTI-SÉLECTION */}
+      <aside className="inbox-workspace__sidebar">
+        <header className="inbox-workspace__header">
+          <div className="inbox-workspace__title-group">
+            <div className="inbox-workspace__title-row">
+              <span className="inbox-workspace__badge-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 12a9 9 0 0 0-15.5-6.3L3 8" />
-                  <path d="M3 3v5h5" />
-                  <path d="M3 12a9 9 0 0 0 15.5 6.3L21 16" />
-                  <path d="M16 16h5v5" />
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
-              </button>
-              <button
-                type="button"
-                className="inbox-workspace__btn inbox-workspace__btn--close"
-                onClick={onClose}
-                title="Fermer"
-                aria-label="Fermer"
-              >
-                ✕
-              </button>
+              </span>
+              <h2 className="inbox-workspace__title">Boîte de dépôt</h2>
+              {items.length > 0 && (
+                <span className="inbox-workspace__count">{items.length}</span>
+              )}
             </div>
-          </header>
+            <p className="inbox-workspace__subtitle">
+              Glissez les éléments en attente sur un projet cible
+            </p>
+          </div>
+
+          <div className="inbox-workspace__header-actions">
+            <button
+              type="button"
+              className="inbox-workspace__btn inbox-workspace__btn--ghost"
+              onClick={onRefreshInbox}
+              title="Actualiser la liste"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 12a9 9 0 0 0-15.5-6.3L3 8" />
+                <path d="M3 3v5h5" />
+                <path d="M3 12a9 9 0 0 0 15.5 6.3L21 16" />
+                <path d="M16 16h5v5" />
+              </svg>
+            </button>
+          </div>
+        </header>
 
           {/* Barre de contrôle rapide : Filtres par type & Tri */}
           {items.length > 0 && (
@@ -871,6 +845,11 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                 <div
                   key={proj}
                   className={`inbox-drop-card ${isOver ? "inbox-drop-card--over" : ""} ${isMoving ? "inbox-drop-card--disabled" : ""}`}
+                  onClick={() => {
+                    if (!isMoving) {
+                      onSelectProject?.(proj);
+                    }
+                  }}
                   onDragOver={(e) => {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = "move";
@@ -884,6 +863,7 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                     setDragOverProject(null);
                   }}
                   onDrop={(e) => void handleDropOnProject(e, proj)}
+                  title={`Glissez des éléments ici pour les transférer dans « ${proj} » ou cliquez pour ouvrir le projet`}
                 >
                   <div className="inbox-drop-card__icon-wrapper">
                     <svg viewBox="0 0 24 24" fill="currentColor" className="inbox-drop-card__folder-svg">
@@ -1084,7 +1064,6 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
             </div>
           </div>
         )}
-      </div>
     </div>
   );
 };

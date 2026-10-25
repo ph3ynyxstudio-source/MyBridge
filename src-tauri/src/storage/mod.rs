@@ -1,12 +1,206 @@
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
 use tauri::{AppHandle, Manager};
 
 const INBOX_DIR_PATH: &str = r"C:\Ph3yNyx.OS\00-Dropbox";
 const PROJECTS_DIR_NAME: &str = "projects";
 const TRASH_DIR_NAME: &str = "trash";
+const MAX_UNDO_HISTORY: usize = 5;
+
+/// Type d'opération enregistrée dans la pile Undo / Redo.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum UndoActionKind {
+    Move,
+    Delete,
+    Rename,
+}
+
+/// Entrée interne de la pile d'annulation / rétablissement.
+#[derive(Debug, Clone)]
+pub struct UndoEntry {
+    pub kind: UndoActionKind,
+    pub label: String,
+    /// Chemin complet avant l'opération.
+    pub original_path: PathBuf,
+    /// Chemin complet après l'opération.
+    pub current_path: PathBuf,
+    /// Si l'action concerne le renommage d'un projet : (ancien_nom, nouveau_nom).
+    pub renamed_project: Option<(String, String)>,
+}
+
+/// État exposé au frontend React pour refléter la pile Undo / Redo.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UndoRedoStatus {
+    pub can_undo: bool,
+    pub can_redo: bool,
+    pub undo_label: Option<String>,
+    pub redo_label: Option<String>,
+    pub undo_count: usize,
+    pub redo_count: usize,
+    pub action_message: Option<String>,
+    pub renamed_project: Option<(String, String)>,
+}
+
+#[derive(Default)]
+struct UndoRedoStack {
+    undo_stack: VecDeque<UndoEntry>,
+    redo_stack: VecDeque<UndoEntry>,
+}
+
+static UNDO_REDO_MANAGER: OnceLock<Mutex<UndoRedoStack>> = OnceLock::new();
+
+fn get_undo_manager() -> &'static Mutex<UndoRedoStack> {
+    UNDO_REDO_MANAGER.get_or_init(|| Mutex::new(UndoRedoStack::default()))
+}
+
+/// Enregistre une nouvelle action dans la pile d'annulation (limitée aux 5 dernières actions)
+/// et réinitialise la pile de rétablissement (Redo).
+fn record_undo_action(entry: UndoEntry) {
+    if let Ok(mut guard) = get_undo_manager().lock() {
+        guard.redo_stack.clear();
+        guard.undo_stack.push_back(entry);
+        while guard.undo_stack.len() > MAX_UNDO_HISTORY {
+            guard.undo_stack.pop_front();
+        }
+    }
+}
+
+fn build_undo_redo_status(
+    stack: &UndoRedoStack,
+    action_message: Option<String>,
+    renamed_project: Option<(String, String)>,
+) -> UndoRedoStatus {
+    UndoRedoStatus {
+        can_undo: !stack.undo_stack.is_empty(),
+        can_redo: !stack.redo_stack.is_empty(),
+        undo_label: stack.undo_stack.back().map(|e| e.label.clone()),
+        redo_label: stack.redo_stack.back().map(|e| e.label.clone()),
+        undo_count: stack.undo_stack.len(),
+        redo_count: stack.redo_stack.len(),
+        action_message,
+        renamed_project,
+    }
+}
+
+/// Renvoie l'état courant des piles Undo / Redo (limitées à 5 actions).
+#[tauri::command]
+pub fn get_undo_redo_status() -> Result<UndoRedoStatus, String> {
+    let guard = get_undo_manager()
+        .lock()
+        .map_err(|_| "Impossible de verrouiller l'historique Undo/Redo.".to_string())?;
+    Ok(build_undo_redo_status(&guard, None, None))
+}
+
+/// Annule la dernière action de manipulation de fichier (déplacement, suppression, renommage).
+#[tauri::command]
+pub fn undo_last_action() -> Result<UndoRedoStatus, String> {
+    let mut guard = get_undo_manager()
+        .lock()
+        .map_err(|_| "Impossible de verrouiller l'historique Undo/Redo.".to_string())?;
+
+    let Some(entry) = guard.undo_stack.pop_back() else {
+        return Err("Aucune action à annuler.".to_string());
+    };
+
+    if !entry.current_path.exists() {
+        return Err(format!(
+            "Impossible d'annuler « {} » : l'élément cible n'existe plus à son emplacement actuel.",
+            entry.label
+        ));
+    }
+
+    if entry.original_path.exists() {
+        // On remet l'entrée dans la pile pour ne pas la perdre si conflit
+        let label = entry.label.clone();
+        guard.undo_stack.push_back(entry);
+        return Err(format!(
+            "Impossible d'annuler « {} » : un élément occupe déjà l'emplacement d'origine.",
+            label
+        ));
+    }
+
+    if let Some(parent) = entry.original_path.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Impossible de recréer le dossier d'origine lors de l'annulation : {}",
+                    e
+                )
+            })?;
+        }
+    }
+
+    move_entry_safely(&entry.current_path, &entry.original_path)?;
+
+    let message = format!("Annulé : {}", entry.label);
+    let renamed = entry
+        .renamed_project
+        .as_ref()
+        .map(|(old_name, new_name)| (new_name.clone(), old_name.clone()));
+
+    guard.redo_stack.push_back(entry);
+    while guard.redo_stack.len() > MAX_UNDO_HISTORY {
+        guard.redo_stack.pop_front();
+    }
+
+    Ok(build_undo_redo_status(&guard, Some(message), renamed))
+}
+
+/// Rétablit la dernière action annulée (Redo).
+#[tauri::command]
+pub fn redo_last_action() -> Result<UndoRedoStatus, String> {
+    let mut guard = get_undo_manager()
+        .lock()
+        .map_err(|_| "Impossible de verrouiller l'historique Undo/Redo.".to_string())?;
+
+    let Some(entry) = guard.redo_stack.pop_back() else {
+        return Err("Aucune action à rétablir.".to_string());
+    };
+
+    if !entry.original_path.exists() {
+        return Err(format!(
+            "Impossible de rétablir « {} » : l'élément source est introuvable.",
+            entry.label
+        ));
+    }
+
+    if entry.current_path.exists() {
+        let label = entry.label.clone();
+        guard.redo_stack.push_back(entry);
+        return Err(format!(
+            "Impossible de rétablir « {} » : un élément existe déjà à la destination.",
+            label
+        ));
+    }
+
+    if let Some(parent) = entry.current_path.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Impossible de recréer le dossier cible lors du rétablissement : {}",
+                    e
+                )
+            })?;
+        }
+    }
+
+    move_entry_safely(&entry.original_path, &entry.current_path)?;
+
+    let message = format!("Rétabli : {}", entry.label);
+    let renamed = entry.renamed_project.clone();
+
+    guard.undo_stack.push_back(entry);
+    while guard.undo_stack.len() > MAX_UNDO_HISTORY {
+        guard.undo_stack.pop_front();
+    }
+
+    Ok(build_undo_redo_status(&guard, Some(message), renamed))
+}
 
 /// Élément présent dans la Boîte de dépôt (`C:\Ph3yNyx.OS\00-Dropbox`) ou dans la Corbeille (`trash/`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -240,6 +434,18 @@ pub fn move_inbox_item(
     }
 
     move_entry_safely(&source_path, &destination_path)?;
+
+    let file_name_str = file_name.to_string_lossy().to_string();
+    record_undo_action(UndoEntry {
+        kind: UndoActionKind::Move,
+        label: format!(
+            "Déplacement de « {} » vers « {} »",
+            file_name_str, valid_project
+        ),
+        original_path: source_path,
+        current_path: destination_path,
+        renamed_project: None,
+    });
 
     Ok(())
 }
@@ -640,7 +846,79 @@ pub fn rename_project(
         )
     })?;
 
+    record_undo_action(UndoEntry {
+        kind: UndoActionKind::Rename,
+        label: format!(
+            "Renommage du projet « {} » en « {} »",
+            valid_old, valid_new
+        ),
+        original_path: old_dir,
+        current_path: new_dir,
+        renamed_project: Some((valid_old, valid_new.clone())),
+    });
+
     Ok(valid_new)
+}
+
+/// Renomme un fichier ou un sous-dossier à l'intérieur d'un projet (`projects/{project_name}/{subpath}`).
+#[tauri::command]
+pub fn rename_item(
+    app: AppHandle,
+    project_name: String,
+    subpath: String,
+    new_name: String,
+) -> Result<String, String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+    let valid_project = validate_single_name(&project_name, "project_name")?;
+    let valid_subpath = validate_relative_subpath(Some(subpath))?;
+    let valid_new_name = validate_single_name(&new_name, "new_name")?;
+
+    if valid_subpath.as_os_str().is_empty() {
+        return Err("Le sous-chemin de l'élément à renommer ne peut pas être vide.".to_string());
+    }
+
+    let source_path = projects_dir.join(&valid_project).join(&valid_subpath);
+    if !source_path.exists() {
+        return Err(format!("L'élément à renommer est introuvable : {:?}", source_path));
+    }
+
+    let old_name = source_path
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    if old_name == valid_new_name {
+        return Ok(valid_new_name);
+    }
+
+    let parent_dir = source_path
+        .parent()
+        .ok_or_else(|| "Dossier parent introuvable.".to_string())?;
+    let dest_path = parent_dir.join(&valid_new_name);
+
+    if dest_path.exists() {
+        return Err(format!(
+            "Un élément nommé '{}' existe déjà dans ce dossier.",
+            valid_new_name
+        ));
+    }
+
+    fs::rename(&source_path, &dest_path).map_err(|e| {
+        format!(
+            "Impossible de renommer '{}' en '{}' : {}",
+            old_name, valid_new_name, e
+        )
+    })?;
+
+    record_undo_action(UndoEntry {
+        kind: UndoActionKind::Rename,
+        label: format!("Renommage de « {} » en « {} »", old_name, valid_new_name),
+        original_path: source_path,
+        current_path: dest_path,
+        renamed_project: None,
+    });
+
+    Ok(valid_new_name)
 }
 
 /// Déplace l'ensemble d'un dossier de projet vers la corbeille (`app_data_dir/trash/`) avec horodatage.
@@ -666,6 +944,14 @@ pub fn delete_project(app: AppHandle, project_name: String) -> Result<(), String
     let dest = trash_dir.join(trash_name);
 
     move_entry_safely(&src, &dest)?;
+
+    record_undo_action(UndoEntry {
+        kind: UndoActionKind::Delete,
+        label: format!("Mise en archive du projet « {} »", valid_project),
+        original_path: src,
+        current_path: dest,
+        renamed_project: None,
+    });
 
     Ok(())
 }
@@ -989,6 +1275,14 @@ pub fn move_to_trash(
 
     move_entry_safely(&src, &dest)?;
 
+    record_undo_action(UndoEntry {
+        kind: UndoActionKind::Delete,
+        label: format!("Suppression de « {} »", original_name),
+        original_path: src,
+        current_path: dest,
+        renamed_project: None,
+    });
+
     Ok(())
 }
 
@@ -1178,6 +1472,22 @@ pub fn move_item(
 
     move_entry_safely(&source_path, &final_dest_path)?;
 
+    let item_label = source_path
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_else(|| "élément".to_string());
+
+    record_undo_action(UndoEntry {
+        kind: UndoActionKind::Move,
+        label: format!(
+            "Déplacement de « {} » vers « {} »",
+            item_label, valid_dest_proj
+        ),
+        original_path: source_path,
+        current_path: final_dest_path,
+        renamed_project: None,
+    });
+
     Ok(())
 }
 
@@ -1246,6 +1556,16 @@ pub fn empty_trash(app: AppHandle) -> Result<(), String> {
             fs::remove_file(&path)
                 .map_err(|e| format!("Erreur lors de la suppression définitive du fichier {:?} : {}", path, e))?;
         }
+    }
+
+    // Nettoyer de la pile Undo/Redo les actions de suppression dont le fichier en corbeille n'existe plus
+    if let Ok(mut guard) = get_undo_manager().lock() {
+        guard
+            .undo_stack
+            .retain(|entry| !entry.current_path.starts_with(&trash_dir));
+        guard
+            .redo_stack
+            .retain(|entry| !entry.original_path.starts_with(&trash_dir));
     }
 
     Ok(())
