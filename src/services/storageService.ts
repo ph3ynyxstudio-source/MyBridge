@@ -9,6 +9,32 @@ export interface InboxItem {
   extension: string | null;
   date_modification: number;
   est_dossier: boolean;
+  nom_original?: string | null;
+  projet_origine?: string | null;
+}
+
+/**
+ * État du dossier `99-Archive` d'un projet (poids total, poids non-compressé, alerte de seuil).
+ */
+export interface ProjectArchiveStatus {
+  project_name: string;
+  total_size: number;
+  uncompressed_size: number;
+  uncompressed_count: number;
+  zip_count: number;
+  threshold_bytes: number;
+  exceeds_threshold: boolean;
+}
+
+/**
+ * Résultat d'une compression ZIP du dossier `99-Archive` d'un projet.
+ */
+export interface ArchiveCompressionResult {
+  project_name: string;
+  zip_file_name: string;
+  items_compressed: number;
+  original_size: number;
+  compressed_size: number;
 }
 
 /**
@@ -299,6 +325,53 @@ export async function getTrashItems(): Promise<InboxItem[]> {
  */
 export async function emptyTrash(): Promise<void> {
   return invoke<void>("empty_trash");
+}
+
+/**
+ * Supprime définitivement une sélection granulaire d'éléments de la corbeille.
+ */
+export async function deleteTrashItems(itemNames: string[]): Promise<number> {
+  return invoke<number>("delete_trash_items", { itemNames });
+}
+
+/**
+ * Transfère un ou plusieurs éléments de la corbeille vers le dossier `99-Archive`
+ * de leur projet d'origine (ou du projet cible spécifié).
+ */
+export async function archiveTrashItems(
+  itemNames: string[],
+  targetProject?: string
+): Promise<number> {
+  return invoke<number>("archive_trash_items", {
+    itemNames,
+    targetProject:
+      targetProject && targetProject.trim().length > 0
+        ? targetProject.trim()
+        : null,
+  });
+}
+
+/**
+ * Inspecte les dossiers `99-Archive` de tous les projets et renvoie leur statut de poids et d'alerte.
+ */
+export async function getArchivesStatus(
+  thresholdBytes?: number
+): Promise<ProjectArchiveStatus[]> {
+  return invoke<ProjectArchiveStatus[]>("get_archives_status", {
+    thresholdBytes: thresholdBytes ?? null,
+  });
+}
+
+/**
+ * Compresse tous les fichiers et sous-dossiers non-zippés du dossier `99-Archive` d'un projet
+ * en une archive `.zip` horodatée.
+ */
+export async function compressProjectArchive(
+  projectName: string
+): Promise<ArchiveCompressionResult> {
+  return invoke<ArchiveCompressionResult>("compress_project_archive", {
+    projectName: projectName.trim(),
+  });
 }
 
 /**

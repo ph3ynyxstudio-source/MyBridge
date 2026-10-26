@@ -537,3 +537,102 @@
   max-width: 160px;
 }
 
+/* =========================================================
+   BANNIÈRE D'ARCHIVAGE INTELLIGENT & ALERTE DE SEUIL (.ZIP)
+   ========================================================= */
+
+.explorer-archive-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 22px;
+  background-color: var(--bg-panel);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.explorer-archive-banner--warning {
+  background-color: rgba(245, 158, 11, 0.08);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.explorer-archive-banner__info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.explorer-archive-banner__icon {
+  width: 18px;
+  height: 18px;
+  color: var(--accent-blue);
+  flex-shrink: 0;
+}
+
+.explorer-archive-banner--warning .explorer-archive-banner__icon {
+  color: #f59e0b;
+}
+
+.explorer-archive-banner__texts {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.explorer-archive-banner__title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.explorer-archive-banner__sub {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.explorer-archive-banner__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.explorer-archive-banner__btn {
+  padding: 5px 12px;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.explorer-archive-banner__btn--primary {
+  background-color: var(--accent-blue);
+  color: var(--text-on-accent);
+  border: 1px solid var(--accent-blue-border);
+}
+
+.explorer-archive-banner__btn--primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.explorer-archive-banner__btn--ghost {
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.explorer-archive-banner__btn--ghost:hover {
+  color: var(--text-primary);
+  background-color: var(--accent-hover);
+}
+
+.explorer-archive-banner__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+

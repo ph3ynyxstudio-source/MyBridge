@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import "./FolderCard.css";
 
-export type TileKind = "folder" | "image" | "file" | "add";
+export type TileKind = "folder" | "zip" | "image" | "file" | "add";
 
 export interface FolderCardProps {
   entryId?: string;
@@ -123,6 +123,75 @@ export const FolderCard: React.FC<FolderCardProps> = ({
               d="M6 10C6 6.686 8.686 4 12 4H30L37 12H68C71.314 12 74 14.686 74 18V54C74 57.314 71.314 60 68 60H12C8.686 60 6 57.314 6 54V10Z"
               fill="currentColor"
             />
+          </svg>
+        )}
+
+        {kind === "zip" && (
+          <svg
+            className="folder-card__svg folder-card__svg--zip"
+            viewBox="0 0 80 64"
+            aria-hidden="true"
+          >
+            {/* Base du dossier compressé */}
+            <path
+              d="M6 10C6 6.686 8.686 4 12 4H30L37 12H68C71.314 12 74 14.686 74 18V54C74 57.314 71.314 60 68 60H12C8.686 60 6 57.314 6 54V10Z"
+              fill="currentColor"
+            />
+            {/* Fente lumineuse supérieure droite rappelant l'icône MyBr|dge */}
+            <path
+              d="M42 17H66C68 17 69.5 18.5 70 21.5C68.5 20.5 66.8 20 64.5 20H44L42 17Z"
+              fill="var(--bg-panel)"
+              opacity="0.7"
+            />
+            {/* Bande de fermeture éclair verticale (Zipper track) */}
+            <rect
+              x="21"
+              y="12"
+              width="12"
+              height="48"
+              rx="1.5"
+              fill="var(--bg-panel)"
+              opacity="0.45"
+            />
+            {/* Dents alternées de la fermeture éclair */}
+            <rect x="22.5" y="15" width="4.5" height="3" rx="0.8" fill="var(--text-primary)" />
+            <rect x="27" y="20" width="4.5" height="3" rx="0.8" fill="var(--text-primary)" />
+            <rect x="22.5" y="25" width="4.5" height="3" rx="0.8" fill="var(--text-primary)" />
+            <rect x="27" y="30" width="4.5" height="3" rx="0.8" fill="var(--text-primary)" />
+            <rect x="22.5" y="35" width="4.5" height="3" rx="0.8" fill="var(--text-primary)" />
+            <rect x="27" y="40" width="4.5" height="3" rx="0.8" fill="var(--text-primary)" />
+            {/* Curseur / tirette du zip */}
+            <rect
+              x="21.5"
+              y="45"
+              width="11"
+              height="9"
+              rx="2"
+              fill="var(--text-primary)"
+            />
+            <circle cx="27" cy="49.5" r="1.8" fill="var(--bg-panel)" />
+            {/* Badge ZIP intégré sur le dossier */}
+            <rect
+              x="41"
+              y="36"
+              width="25"
+              height="15"
+              rx="3.5"
+              fill="var(--bg-panel)"
+              opacity="0.85"
+            />
+            <text
+              x="53.5"
+              y="46.5"
+              textAnchor="middle"
+              fill="var(--text-primary)"
+              fontSize="8.5"
+              fontWeight="800"
+              fontFamily="system-ui, sans-serif"
+              letterSpacing="0.06em"
+            >
+              ZIP
+            </text>
           </svg>
         )}
 

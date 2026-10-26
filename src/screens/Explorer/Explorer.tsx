@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { TileKind } from "../../components/FolderCard/FolderCard";
 import {
+  archiveTrashItems,
+  compressProjectArchive,
   convertInboxFolderToProject,
   copyItem,
   createProject,
   deleteProject,
+  deleteTrashItems,
   emptyTrash,
+  getArchivesStatus,
   getInboxItems,
   getTrashItems,
   getUndoRedoStatus,
@@ -17,6 +21,7 @@ import {
   moveItem,
   moveToTrash,
   openFileInSystem,
+  ProjectArchiveStatus,
   ProjectFolder,
   readProjectContents,
   redoLastAction,
@@ -47,7 +52,10 @@ import {
 } from "./components/ShortcutsPanel/ShortcutsPanel";
 import { EcosystemSidebar } from "./components/EcosystemSidebar/EcosystemSidebar";
 import { ContextMenu } from "./components/ContextMenu/ContextMenu";
-import { TrashDrawer } from "./components/TrashDrawer/TrashDrawer";
+import {
+  TrashDrawer,
+  formatBytesHuman,
+} from "./components/TrashDrawer/TrashDrawer";
 import { PreviewFile } from "./components/PreviewDrawer/PreviewDrawer";
 import "./Explorer.css";
 
@@ -89,11 +97,16 @@ const PREVIEWABLE_EXTENSIONS = new Set([
   "pdf",
 ]);
 
+const ARCHIVE_EXTENSIONS = new Set(["zip", "rar", "7z", "tar", "gz"]);
+
 function resolveTileKind(folder: ProjectFolder): TileKind {
   if (folder.est_dossier) return "folder";
   const dotIdx = folder.nom.lastIndexOf(".");
   if (dotIdx > 0) {
     const ext = folder.nom.slice(dotIdx + 1).toLowerCase();
+    if (ARCHIVE_EXTENSIONS.has(ext)) {
+      return "zip";
+    }
     if (IMAGE_EXTENSIONS.has(ext)) {
       return "image";
     }
@@ -225,9 +238,14 @@ export const Explorer: React.FC = () => {
   // Menu contextuel (clic droit)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
-  // Corbeille locale sécurisée
+  // Corbeille locale sécurisée & statut de poids des archives (99-Archive)
   const [trashItems, setTrashItems] = useState<InboxItem[]>([]);
   const [isTrashDrawerOpen, setIsTrashDrawerOpen] = useState<boolean>(false);
+  const [archivesStatus, setArchivesStatus] = useState<ProjectArchiveStatus[]>([]);
+  const [dismissedArchiveAlerts, setDismissedArchiveAlerts] = useState<Set<string>>(
+    new Set()
+  );
+  const [isCompressingBanner, setIsCompressingBanner] = useState<boolean>(false);
 
   // Modale de confirmation de suppression d'un projet (avec avertissement sous-dossiers en archive)
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
@@ -383,12 +401,16 @@ export const Explorer: React.FC = () => {
   }, []);
 
   /**
-   * Charge les éléments présents dans la Corbeille (`trash/`).
+   * Charge les éléments présents dans la Corbeille (`trash/`) et actualise le poids des dossiers `99-Archive`.
    */
   const refreshTrash = useCallback(async () => {
     try {
-      const items = await getTrashItems();
+      const [items, archStatuses] = await Promise.all([
+        getTrashItems(),
+        getArchivesStatus(),
+      ]);
       setTrashItems(items);
+      setArchivesStatus(archStatuses);
     } catch (err) {
       console.error("Erreur lors du chargement de la Corbeille :", err);
     }
@@ -1648,6 +1670,72 @@ export const Explorer: React.FC = () => {
   };
 
   /**
+   * Suppression définitive d'une sélection granulaire d'éléments de la corbeille.
+   */
+  const handleDeleteTrashItems = async (itemNames: string[]) => {
+    await deleteTrashItems(itemNames);
+    await refreshTrash();
+    await syncUndoRedoStatus();
+  };
+
+  /**
+   * Transfert d'un ou plusieurs éléments de la corbeille vers le dossier `99-Archive` du projet cible.
+   */
+  const handleArchiveTrashItems = async (
+    itemNames: string[],
+    targetProject?: string
+  ) => {
+    await archiveTrashItems(itemNames, targetProject);
+    await refreshTrash();
+    await refreshProjects(activeProject, currentSubpath);
+    if (isSplitViewActive && secondaryProject) {
+      await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+    }
+    await syncUndoRedoStatus();
+  };
+
+  /**
+   * Compression intelligente (ZIP) du dossier `99-Archive` d'un projet.
+   */
+  const handleCompressProjectArchive = async (projectName: string) => {
+    setIsCompressingBanner(true);
+    try {
+      const res = await compressProjectArchive(projectName);
+      await refreshTrash();
+      if (activeProject === projectName) {
+        await loadProjectFolder(activeProject, currentSubpath, currentFolderType);
+      }
+      if (isSplitViewActive && secondaryProject === projectName) {
+        await loadSecondaryProjectFolder(secondaryProject, secondarySubpath);
+      }
+      showUndoToast(
+        language === "en"
+          ? `Archived into ${res.zip_file_name} (${formatBytesHuman(res.compressed_size)})`
+          : `Archive créée : ${res.zip_file_name} (${formatBytesHuman(res.compressed_size)})`
+      );
+    } finally {
+      setIsCompressingBanner(false);
+    }
+  };
+
+  // Statut d'archive du projet actif (lorsqu'on navigue dans 99-Archive)
+  const activeProjectArchiveStatus = useMemo(
+    () =>
+      archivesStatus.find((st) => st.project_name === activeProject) || null,
+    [archivesStatus, activeProject]
+  );
+
+  // Premier projet dont le dossier 99-Archive dépasse le seuil de poids
+  const alertArchiveStatus = useMemo(
+    () =>
+      archivesStatus.find(
+        (st) =>
+          st.exceeds_threshold && !dismissedArchiveAlerts.has(st.project_name)
+      ) || null,
+    [archivesStatus, dismissedArchiveAlerts]
+  );
+
+  /**
    * Début du glisser-déposer d'un ou plusieurs fichiers / sous-dossiers.
    * Si l'élément glissé fait partie d'une multisélection active, tous les éléments sélectionnés sont déplacés ensemble.
    */
@@ -2106,6 +2194,105 @@ export const Explorer: React.FC = () => {
         onClose={() => setIsShortcutsOpen(false)}
       />
 
+      {/* Notification intelligente de seuil de poids d'archive ou barre d'action manuelle dans 99-Archive */}
+      {alertArchiveStatus ? (
+        <div className="explorer-archive-banner explorer-archive-banner--warning">
+          <div className="explorer-archive-banner__info">
+            <svg
+              className="explorer-archive-banner__icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <polyline points="21 8 21 21 3 21 3 8" />
+              <rect x="1" y="3" width="22" height="5" />
+              <line x1="10" y1="12" x2="14" y2="12" />
+            </svg>
+            <div className="explorer-archive-banner__texts">
+              <span className="explorer-archive-banner__title">
+                {terms.archiveBanner.thresholdAlertTitle(
+                  alertArchiveStatus.project_name,
+                  formatBytesHuman(alertArchiveStatus.uncompressed_size)
+                )}
+              </span>
+              <span className="explorer-archive-banner__sub">
+                {terms.archiveBanner.thresholdAlertSub}
+              </span>
+            </div>
+          </div>
+          <div className="explorer-archive-banner__actions">
+            <button
+              type="button"
+              className="explorer-archive-banner__btn explorer-archive-banner__btn--primary"
+              disabled={isCompressingBanner}
+              onClick={() =>
+                void handleCompressProjectArchive(alertArchiveStatus.project_name)
+              }
+            >
+              {isCompressingBanner
+                ? terms.archiveBanner.compressingAction
+                : terms.archiveBanner.compressAction}
+            </button>
+            <button
+              type="button"
+              className="explorer-archive-banner__btn explorer-archive-banner__btn--ghost"
+              onClick={() =>
+                setDismissedArchiveAlerts((prev) => {
+                  const next = new Set(prev);
+                  next.add(alertArchiveStatus.project_name);
+                  return next;
+                })
+              }
+            >
+              {terms.archiveBanner.dismiss}
+            </button>
+          </div>
+        </div>
+      ) : !isInboxView &&
+        !isGlobalSearchActive &&
+        currentFolderType === "archive" &&
+        activeProjectArchiveStatus &&
+        activeProjectArchiveStatus.uncompressed_count > 0 ? (
+        <div className="explorer-archive-banner">
+          <div className="explorer-archive-banner__info">
+            <svg
+              className="explorer-archive-banner__icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <polyline points="21 8 21 21 3 21 3 8" />
+              <rect x="1" y="3" width="22" height="5" />
+              <line x1="10" y1="12" x2="14" y2="12" />
+            </svg>
+            <span className="explorer-archive-banner__title">
+              {terms.archiveBanner.folderHeaderTitle(
+                activeProjectArchiveStatus.uncompressed_count,
+                formatBytesHuman(activeProjectArchiveStatus.uncompressed_size)
+              )}
+            </span>
+          </div>
+          <div className="explorer-archive-banner__actions">
+            <button
+              type="button"
+              className="explorer-archive-banner__btn explorer-archive-banner__btn--primary"
+              disabled={isCompressingBanner}
+              onClick={() =>
+                void handleCompressProjectArchive(
+                  activeProjectArchiveStatus.project_name
+                )
+              }
+            >
+              {isCompressingBanner
+                ? terms.archiveBanner.compressingAction
+                : terms.archiveBanner.compressAction}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <main className="explorer-screen__body">
         {isGlobalSearchActive ? (
           <section className="explorer-global-search">
@@ -2440,13 +2627,19 @@ export const Explorer: React.FC = () => {
         />
       )}
 
-      {/* Volet Corbeille sécurisé avec confirmation explicite */}
+      {/* Volet Corbeille & Archivage Intelligent */}
       <TrashDrawer
         isOpen={isTrashDrawerOpen}
         items={trashItems}
+        projects={projects}
+        archivesStatus={archivesStatus}
+        language={language}
         onClose={() => setIsTrashDrawerOpen(false)}
         onRefreshTrash={refreshTrash}
         onEmptyTrash={handleEmptyTrash}
+        onDeleteTrashItems={handleDeleteTrashItems}
+        onArchiveTrashItems={handleArchiveTrashItems}
+        onCompressArchive={handleCompressProjectArchive}
       />
 
       {/* Modale de confirmation : Suppression d'un projet avec avertissement sous-dossiers en archive */}

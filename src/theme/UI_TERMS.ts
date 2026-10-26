@@ -101,7 +101,7 @@ export const UI_DICTIONARY = {
       sortNameDesc: "Nom (Z - A)",
       selectAll: "Tout sélectionner",
       selectedPill: (count: number) => `${count} sélectionné(s)`,
-      destTitle: "Projets de destination",
+      destTitle: "Mes projets",
       destSubtitle:
         "Glissez-déposez vos fichiers sélectionnés directement sur la carte du projet souhaité",
       movingNotice: "Déplacement en cours...",
@@ -160,6 +160,59 @@ export const UI_DICTIONARY = {
       renameProject: "Renommer le projet",
       deleteProject: "Supprimer le projet",
       refresh: "Actualiser",
+    },
+    trashDrawer: {
+      title: "Corbeille & Archivage Intelligent",
+      subtitle:
+        "Triez par projet, transférez vers les Archives (99-Archive) ou supprimez définitivement.",
+      refresh: "Actualiser",
+      emptyTrashBtn: "Vider la corbeille",
+      close: "Fermer",
+      emptyTitle: "La corbeille est vide",
+      emptySubtitle:
+        "Glissez des fichiers ou utilisez le clic droit pour envoyer des éléments ici.",
+      groupModeLabel: "Regrouper par projet",
+      listModeLabel: "Liste chronologique",
+      filterAllProjects: "Tous les projets",
+      unclassifiedProject: "Projet non spécifié",
+      selectTargetProject: "Choisir un projet...",
+      archiveGroupBtn: "Tout vers Archives",
+      deleteGroupBtn: "Supprimer le groupe",
+      archiveItemBtn: "Vers Archives",
+      deleteItemBtn: "Supprimer",
+      confirmEmptyTitle: "Vider toute la corbeille ?",
+      confirmEmptyText:
+        "Cette action supprimera définitivement l'ensemble des éléments de la corbeille du stockage local. Cette opération est irréversible.",
+      confirmDeleteSelectionTitle: (count: number) =>
+        count > 1
+          ? `Supprimer définitivement ces ${count} éléments ?`
+          : "Supprimer définitivement cet élément ?",
+      confirmDeleteSelectionText:
+        "Cette suppression définitive du disque est irréversible. Souhaitez-vous continuer ?",
+      cancelBtn: "Annuler",
+      confirmDeleteBtn: "Confirmer la suppression",
+      deletingBtn: "Suppression...",
+      archiveSectionTitle: "Compression intelligente des Archives (.zip)",
+      archiveSectionSubtitle:
+        "Compressez les dossiers 99-Archive volumineux en archives .zip pour alléger vos projets.",
+      thresholdWarning: (sizeLabel: string) =>
+        `Seuil dépassé (${sizeLabel} non compressés)`,
+      uncompressedStats: (count: number, sizeLabel: string) =>
+        `${count} élément(s) non compressé(s) • ${sizeLabel}`,
+      zipCountBadge: (count: number) => `${count} archive(s) .zip`,
+      compressBtn: "Compresser en .zip",
+      compressingBtn: "Compression...",
+    },
+    archiveBanner: {
+      thresholdAlertTitle: (project: string, sizeLabel: string) =>
+        `Le dossier Archives de « ${project} » atteint ${sizeLabel} non compressés`,
+      thresholdAlertSub:
+        "Compressez-le en un fichier .zip pour éviter l'encombrement du projet.",
+      folderHeaderTitle: (count: number, sizeLabel: string) =>
+        `Dossier Archives : ${count} élément(s) non compressé(s) (${sizeLabel})`,
+      compressAction: "Compresser les archives (.zip)",
+      compressingAction: "Compression ZIP en cours...",
+      dismiss: "Ignorer",
     },
   },
   en: {
@@ -253,7 +306,7 @@ export const UI_DICTIONARY = {
       sortNameDesc: "Name (Z - A)",
       selectAll: "Select all",
       selectedPill: (count: number) => `${count} selected`,
-      destTitle: "Destination Projects",
+      destTitle: "My Projects",
       destSubtitle:
         "Drag and drop your selected files directly onto the desired project card",
       movingNotice: "Moving items...",
@@ -310,6 +363,59 @@ export const UI_DICTIONARY = {
       renameProject: "Rename project",
       deleteProject: "Delete project",
       refresh: "Refresh",
+    },
+    trashDrawer: {
+      title: "Smart Trash & Archiving",
+      subtitle:
+        "Group by project, transfer to Archives (99-Archive) or permanently delete.",
+      refresh: "Refresh",
+      emptyTrashBtn: "Empty Trash",
+      close: "Close",
+      emptyTitle: "Trash is empty",
+      emptySubtitle:
+        "Drag files or right-click items to move them here.",
+      groupModeLabel: "Group by project",
+      listModeLabel: "Chronological list",
+      filterAllProjects: "All projects",
+      unclassifiedProject: "Unassigned project",
+      selectTargetProject: "Select project...",
+      archiveGroupBtn: "Archive All",
+      deleteGroupBtn: "Delete Group",
+      archiveItemBtn: "To Archives",
+      deleteItemBtn: "Delete",
+      confirmEmptyTitle: "Empty entire trash?",
+      confirmEmptyText:
+        "This action will permanently delete all items in the trash from local storage. This cannot be undone.",
+      confirmDeleteSelectionTitle: (count: number) =>
+        count > 1
+          ? `Permanently delete these ${count} items?`
+          : "Permanently delete this item?",
+      confirmDeleteSelectionText:
+        "This permanent deletion from disk cannot be undone. Do you want to proceed?",
+      cancelBtn: "Cancel",
+      confirmDeleteBtn: "Confirm deletion",
+      deletingBtn: "Deleting...",
+      archiveSectionTitle: "Smart Archive Compression (.zip)",
+      archiveSectionSubtitle:
+        "Compress heavy 99-Archive folders into .zip bundles to declutter your projects.",
+      thresholdWarning: (sizeLabel: string) =>
+        `Threshold exceeded (${sizeLabel} uncompressed)`,
+      uncompressedStats: (count: number, sizeLabel: string) =>
+        `${count} uncompressed item(s) • ${sizeLabel}`,
+      zipCountBadge: (count: number) => `${count} .zip archive(s)`,
+      compressBtn: "Compress to .zip",
+      compressingBtn: "Compressing...",
+    },
+    archiveBanner: {
+      thresholdAlertTitle: (project: string, sizeLabel: string) =>
+        `Archives folder in "${project}" reached ${sizeLabel} uncompressed`,
+      thresholdAlertSub:
+        "Compress it into a .zip bundle to keep your project lightweight.",
+      folderHeaderTitle: (count: number, sizeLabel: string) =>
+        `Archives Folder: ${count} uncompressed item(s) (${sizeLabel})`,
+      compressAction: "Compress archives (.zip)",
+      compressingAction: "Compressing ZIP...",
+      dismiss: "Dismiss",
     },
   },
 } as const;

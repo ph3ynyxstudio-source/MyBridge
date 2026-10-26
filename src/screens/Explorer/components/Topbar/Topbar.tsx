@@ -203,20 +203,12 @@ export const Topbar: React.FC<TopbarProps> = ({
           title={terms.topbar.inboxTitle}
           aria-label={terms.topbar.inboxTitle}
         >
-          <svg
+          <img
+            src="/icon.png"
+            alt=""
             className="topbar__brand-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M2 18h20" />
-            <path d="M6 18V7" />
-            <path d="M18 18V7" />
-            <path d="M2 14c2.5-1.5 4-4 4-7 2.5 4.5 9.5 4.5 12 0 0 3 1.5 5.5 4 7" />
-          </svg>
+            aria-hidden="true"
+          />
           <span className="topbar__brand-title">{terms.appTitle}</span>
           {inboxCount > 0 && (
             <span

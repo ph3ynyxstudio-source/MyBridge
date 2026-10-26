@@ -63,6 +63,18 @@ function getItemIcon(item: InboxItem) {
     );
   }
   const ext = (item.extension || "").toLowerCase();
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) {
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" className="inbox-item__icon inbox-item__icon--folder">
+        <path d="M3 6a2 2 0 012-2h5l2 2h7a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V6z" />
+        <rect x="8" y="6" width="2" height="2" fill="var(--bg-panel)" />
+        <rect x="10" y="8" width="2" height="2" fill="var(--bg-panel)" />
+        <rect x="8" y="10" width="2" height="2" fill="var(--bg-panel)" />
+        <rect x="10" y="12" width="2" height="2" fill="var(--bg-panel)" />
+        <rect x="7.5" y="14.5" width="5" height="3.5" rx="0.8" fill="var(--bg-panel)" />
+      </svg>
+    );
+  }
   if (["png", "jpg", "jpeg", "webp", "svg", "gif"].includes(ext)) {
     return (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="inbox-item__icon inbox-item__icon--image">

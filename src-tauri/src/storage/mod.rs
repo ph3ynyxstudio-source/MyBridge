@@ -1,6 +1,9 @@
+use flate2::write::DeflateEncoder;
+use flate2::Compression;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fs;
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
@@ -210,6 +213,10 @@ pub struct InboxItem {
     pub extension: Option<String>,
     pub date_modification: u64,
     pub est_dossier: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nom_original: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub projet_origine: Option<String>,
 }
 
 /// Dossier ou fichier présent à l'intérieur d'un projet (`projects/{project_name}`).
@@ -374,6 +381,8 @@ pub fn get_inbox_items(
             extension,
             date_modification,
             est_dossier,
+            nom_original: None,
+            projet_origine: None,
         });
     }
 
@@ -940,7 +949,7 @@ pub fn delete_project(app: AppHandle, project_name: String) -> Result<(), String
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    let trash_name = format!("{}_{}", timestamp, valid_project);
+    let trash_name = format!("{}__{}__{}", timestamp, valid_project, valid_project);
     let dest = trash_dir.join(trash_name);
 
     move_entry_safely(&src, &dest)?;
@@ -1270,7 +1279,7 @@ pub fn move_to_trash(
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_else(|| "element".to_string());
 
-    let trash_name = format!("{}_{}", timestamp, original_name);
+    let trash_name = format!("{}__{}__{}", timestamp, valid_project, original_name);
     let dest = trash_dir.join(trash_name);
 
     move_entry_safely(&src, &dest)?;
@@ -1491,10 +1500,58 @@ pub fn move_item(
     Ok(())
 }
 
-/// Parcourt le dossier de corbeille (`trash/`) et renvoie la liste des éléments supprimés.
+/// Calcule récursivement la taille totale en octets d'un fichier ou d'un dossier.
+fn calculate_dir_size(path: &Path) -> u64 {
+    let Ok(meta) = fs::metadata(path) else {
+        return 0;
+    };
+    if !meta.is_dir() {
+        return meta.len();
+    }
+    let mut total = 0u64;
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            total = total.saturating_add(calculate_dir_size(&entry.path()));
+        }
+    }
+    total
+}
+
+/// Analyse le nom technique d'une entrée de la corbeille (`{timestamp}__{projet}__{nom_original}`
+/// ou ancien format `{timestamp}_{nom}`) pour en extraire `(projet_origine, nom_original)`.
+fn parse_trash_entry_name(raw_name: &str, known_projects: &[String]) -> (Option<String>, String) {
+    let mut parts = raw_name.splitn(3, "__");
+    if let (Some(ts), Some(proj), Some(orig)) = (parts.next(), parts.next(), parts.next()) {
+        if !ts.is_empty()
+            && ts.chars().all(|c| c.is_ascii_digit())
+            && !proj.is_empty()
+            && !orig.is_empty()
+        {
+            return (Some(proj.to_string()), orig.to_string());
+        }
+    }
+
+    if let Some((ts, rest)) = raw_name.split_once('_') {
+        if !ts.is_empty() && ts.chars().all(|c| c.is_ascii_digit()) && !rest.is_empty() {
+            if let Some(matched) = known_projects
+                .iter()
+                .find(|p| p.eq_ignore_ascii_case(rest))
+            {
+                return (Some(matched.clone()), rest.to_string());
+            }
+            return (None, rest.to_string());
+        }
+    }
+
+    (None, raw_name.to_string())
+}
+
+/// Parcourt le dossier de corbeille (`trash/`) et renvoie la liste des éléments supprimés
+/// enrichis de leur projet d'origine et de leur nom d'origine.
 #[tauri::command]
 pub fn get_trash_items(app: AppHandle) -> Result<Vec<InboxItem>, String> {
     let trash_dir = get_trash_dir(&app)?;
+    let known_projects = list_projects(app).unwrap_or_default();
     let read_dir = fs::read_dir(&trash_dir)
         .map_err(|e| format!("Erreur lors de la lecture de la corbeille : {}", e))?;
 
@@ -1508,9 +1565,10 @@ pub fn get_trash_items(app: AppHandle) -> Result<Vec<InboxItem>, String> {
             .map_err(|e| format!("Métadonnées corbeille illisibles : {}", e))?;
 
         let nom = entry.file_name().to_string_lossy().to_string();
+        let (projet_origine, nom_original) = parse_trash_entry_name(&nom, &known_projects);
         let est_dossier = metadata.is_dir();
         let taille = if est_dossier {
-            0
+            calculate_dir_size(&path)
         } else {
             fs::metadata(&path)
                 .map(|m| m.len())
@@ -1531,12 +1589,500 @@ pub fn get_trash_items(app: AppHandle) -> Result<Vec<InboxItem>, String> {
             extension,
             date_modification,
             est_dossier,
+            nom_original: Some(nom_original),
+            projet_origine,
         });
     }
 
     items.sort_by(|a, b| b.date_modification.cmp(&a.date_modification));
 
     Ok(items)
+}
+
+/// Supprime définitivement une sélection granulaire d'éléments de la corbeille (`trash/`).
+#[tauri::command]
+pub fn delete_trash_items(app: AppHandle, item_names: Vec<String>) -> Result<usize, String> {
+    let trash_dir = get_trash_dir(&app)?;
+    let mut deleted_paths = Vec::new();
+
+    for raw_name in item_names {
+        let valid_name = validate_single_name(&raw_name, "item_name")?;
+        let path = trash_dir.join(&valid_name);
+        if !path.exists() {
+            continue;
+        }
+        if path.is_dir() {
+            fs::remove_dir_all(&path).map_err(|e| {
+                format!(
+                    "Erreur lors de la suppression définitive du dossier {:?} : {}",
+                    path, e
+                )
+            })?;
+        } else {
+            fs::remove_file(&path).map_err(|e| {
+                format!(
+                    "Erreur lors de la suppression définitive du fichier {:?} : {}",
+                    path, e
+                )
+            })?;
+        }
+        deleted_paths.push(path);
+    }
+
+    if !deleted_paths.is_empty() {
+        if let Ok(mut guard) = get_undo_manager().lock() {
+            guard
+                .undo_stack
+                .retain(|entry| !deleted_paths.contains(&entry.current_path));
+            guard
+                .redo_stack
+                .retain(|entry| !deleted_paths.contains(&entry.original_path));
+        }
+    }
+
+    Ok(deleted_paths.len())
+}
+
+/// Transfère un ou plusieurs éléments de la corbeille vers le dossier `99-Archive` de leur projet d'origine
+/// (ou du projet cible spécifié). Si le projet n'existe plus, il est recréé avec son arborescence standardisée.
+#[tauri::command]
+pub fn archive_trash_items(
+    app: AppHandle,
+    item_names: Vec<String>,
+    target_project: Option<String>,
+) -> Result<usize, String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+    let trash_dir = get_trash_dir(&app)?;
+    let known_projects = list_projects(app).unwrap_or_default();
+
+    let explicit_project = match target_project {
+        Some(ref p) if !p.trim().is_empty() => Some(validate_single_name(p, "target_project")?),
+        _ => None,
+    };
+
+    let mut moved_count = 0usize;
+
+    for raw_name in item_names {
+        let valid_trash_name = validate_single_name(&raw_name, "trash_item")?;
+        let src_path = trash_dir.join(&valid_trash_name);
+        if !src_path.exists() {
+            continue;
+        }
+
+        let (parsed_project, orig_name) =
+            parse_trash_entry_name(&valid_trash_name, &known_projects);
+        let dest_project = explicit_project
+            .clone()
+            .or(parsed_project)
+            .ok_or_else(|| {
+                format!(
+                    "Impossible de déterminer le projet d'origine pour « {} ». Veuillez sélectionner un projet cible.",
+                    orig_name
+                )
+            })?;
+
+        let valid_dest_project = validate_single_name(&dest_project, "dest_project")?;
+        let project_root = projects_dir.join(&valid_dest_project);
+
+        // Si le projet d'origine n'existe plus, le recréer avec sa structure standard
+        if !project_root.exists() {
+            fs::create_dir_all(&project_root).map_err(|e| {
+                format!(
+                    "Impossible de recréer le projet '{}' : {}",
+                    valid_dest_project, e
+                )
+            })?;
+            for sub in STANDARD_SUBFOLDERS {
+                let _ = fs::create_dir_all(project_root.join(sub));
+            }
+        }
+
+        let archive_dir = project_root.join("99-Archive");
+        if !archive_dir.exists() {
+            fs::create_dir_all(&archive_dir).map_err(|e| {
+                format!(
+                    "Impossible de créer le dossier 99-Archive dans '{}' : {}",
+                    valid_dest_project, e
+                )
+            })?;
+        }
+
+        let clean_orig = validate_single_name(&orig_name, "original_name")
+            .unwrap_or_else(|_| "element_archive".to_string());
+
+        let mut final_dest = archive_dir.join(&clean_orig);
+        if final_dest.exists() {
+            let stem = Path::new(&clean_orig)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "archive".to_string());
+            let ext = Path::new(&clean_orig)
+                .extension()
+                .map(|e| format!(".{}", e.to_string_lossy()))
+                .unwrap_or_default();
+
+            let mut counter = 1;
+            loop {
+                let candidate = archive_dir.join(format!("{} ({}){}", stem, counter, ext));
+                if !candidate.exists() {
+                    final_dest = candidate;
+                    break;
+                }
+                counter += 1;
+            }
+        }
+
+        move_entry_safely(&src_path, &final_dest)?;
+
+        record_undo_action(UndoEntry {
+            kind: UndoActionKind::Move,
+            label: format!(
+                "Transfert de « {} » vers Archives ({})",
+                clean_orig, valid_dest_project
+            ),
+            original_path: src_path,
+            current_path: final_dest,
+            renamed_project: None,
+        });
+
+        moved_count += 1;
+    }
+
+    Ok(moved_count)
+}
+
+/// Seuil par défaut d'alerte de poids pour un dossier `99-Archive` (10 Mo).
+pub const DEFAULT_ARCHIVE_THRESHOLD_BYTES: u64 = 10 * 1024 * 1024;
+
+/// État du dossier `99-Archive` d'un projet (poids total, poids non-compressé, alerte de seuil).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectArchiveStatus {
+    pub project_name: String,
+    pub total_size: u64,
+    pub uncompressed_size: u64,
+    pub uncompressed_count: usize,
+    pub zip_count: usize,
+    pub threshold_bytes: u64,
+    pub exceeds_threshold: bool,
+}
+
+/// Résultat d'une opération de compression ZIP du dossier `99-Archive` d'un projet.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveCompressionResult {
+    pub project_name: String,
+    pub zip_file_name: String,
+    pub items_compressed: usize,
+    pub original_size: u64,
+    pub compressed_size: u64,
+}
+
+/// Inspecte les dossiers `99-Archive` de tous les projets et renvoie leur statut de poids et d'alerte.
+#[tauri::command]
+pub fn get_archives_status(
+    app: AppHandle,
+    threshold_bytes: Option<u64>,
+) -> Result<Vec<ProjectArchiveStatus>, String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+    let threshold = threshold_bytes.unwrap_or(DEFAULT_ARCHIVE_THRESHOLD_BYTES);
+
+    let read_dir = fs::read_dir(&projects_dir)
+        .map_err(|e| format!("Erreur lors de la lecture de projects/ : {}", e))?;
+
+    let mut statuses = Vec::new();
+
+    for entry_res in read_dir.flatten() {
+        let proj_path = entry_res.path();
+        if !proj_path.is_dir() {
+            continue;
+        }
+        let project_name = entry_res.file_name().to_string_lossy().to_string();
+        let archive_dir = proj_path.join("99-Archive");
+
+        let mut total_size = 0u64;
+        let mut uncompressed_size = 0u64;
+        let mut uncompressed_count = 0usize;
+        let mut zip_count = 0usize;
+
+        if archive_dir.exists() && archive_dir.is_dir() {
+            if let Ok(arch_entries) = fs::read_dir(&archive_dir) {
+                for arch_entry in arch_entries.flatten() {
+                    let p = arch_entry.path();
+                    let sz = calculate_dir_size(&p);
+                    total_size = total_size.saturating_add(sz);
+
+                    let is_zip = p.is_file()
+                        && p.extension()
+                            .map(|ext| ext.to_string_lossy().eq_ignore_ascii_case("zip"))
+                            .unwrap_or(false);
+
+                    if is_zip {
+                        zip_count += 1;
+                    } else {
+                        uncompressed_size = uncompressed_size.saturating_add(sz);
+                        uncompressed_count += 1;
+                    }
+                }
+            }
+        }
+
+        statuses.push(ProjectArchiveStatus {
+            project_name,
+            total_size,
+            uncompressed_size,
+            uncompressed_count,
+            zip_count,
+            threshold_bytes: threshold,
+            exceeds_threshold: uncompressed_count > 0 && uncompressed_size >= threshold,
+        });
+    }
+
+    statuses.sort_by(|a, b| a.project_name.to_lowercase().cmp(&b.project_name.to_lowercase()));
+    Ok(statuses)
+}
+
+/// Structure interne pour l'écriture de l'annuaire central (Central Directory) d'une archive PKZIP.
+struct ZipCentralEntry {
+    rel_name: Vec<u8>,
+    crc32: u32,
+    compressed_size: u32,
+    uncompressed_size: u32,
+    local_header_offset: u32,
+}
+
+/// Collecte récursivement tous les fichiers situés sous `path` pour les inclure dans l'archive ZIP.
+fn collect_files_for_zip(path: &Path, base_dir: &Path, files: &mut Vec<(String, PathBuf)>) -> Result<(), String> {
+    if path.is_file() {
+        let rel = path
+            .strip_prefix(base_dir)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        files.push((rel, path.to_path_buf()));
+    } else if path.is_dir() {
+        let entries = fs::read_dir(path)
+            .map_err(|e| format!("Impossible de parcourir le dossier {:?} : {}", path, e))?;
+        for entry_res in entries {
+            let entry = entry_res.map_err(|e| format!("Entrée illisible : {}", e))?;
+            collect_files_for_zip(&entry.path(), base_dir, files)?;
+        }
+    }
+    Ok(())
+}
+
+/// Crée une archive standard `.zip` (PKZIP 2.0 avec compression DEFLATE et encodage UTF-8)
+/// à partir d'une liste de chemins relatifs à `base_dir`.
+fn write_zip_archive(
+    items: &[PathBuf],
+    base_dir: &Path,
+    output_zip_path: &Path,
+) -> Result<u64, String> {
+    let mut files_to_pack = Vec::new();
+    for item in items {
+        collect_files_for_zip(item, base_dir, &mut files_to_pack)?;
+    }
+
+    let mut out_file = fs::File::create(output_zip_path).map_err(|e| {
+        format!(
+            "Impossible de créer le fichier d'archive ZIP {:?} : {}",
+            output_zip_path, e
+        )
+    })?;
+
+    let mut central_entries: Vec<ZipCentralEntry> = Vec::with_capacity(files_to_pack.len());
+    let mut current_offset: u32 = 0;
+
+    for (rel_path, full_path) in files_to_pack {
+        let raw_bytes = fs::read(&full_path).map_err(|e| {
+            format!(
+                "Impossible de lire le fichier {:?} lors de la compression : {}",
+                full_path, e
+            )
+        })?;
+
+        let crc = crc32fast::hash(&raw_bytes);
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(&raw_bytes)
+            .map_err(|e| format!("Erreur de compression DEFLATE : {}", e))?;
+        let compressed_bytes = encoder
+            .finish()
+            .map_err(|e| format!("Erreur de finalisation DEFLATE : {}", e))?;
+
+        let rel_name_bytes = rel_path.into_bytes();
+        let name_len = rel_name_bytes.len() as u16;
+        let uncompressed_size = raw_bytes.len() as u32;
+        let compressed_size = compressed_bytes.len() as u32;
+        let local_header_offset = current_offset;
+
+        // En-tête de fichier local PKZIP (30 octets + nom)
+        let mut local_header = Vec::with_capacity(30 + rel_name_bytes.len());
+        local_header.extend_from_slice(&0x04034b50u32.to_le_bytes()); // Signature
+        local_header.extend_from_slice(&20u16.to_le_bytes()); // Version requise (2.0)
+        local_header.extend_from_slice(&0x0800u16.to_le_bytes()); // Bit 11 : UTF-8
+        local_header.extend_from_slice(&8u16.to_le_bytes()); // Méthode 8 : DEFLATE
+        local_header.extend_from_slice(&0u16.to_le_bytes()); // Heure MS-DOS
+        local_header.extend_from_slice(&0x21u16.to_le_bytes()); // Date MS-DOS valide
+        local_header.extend_from_slice(&crc.to_le_bytes()); // CRC-32
+        local_header.extend_from_slice(&compressed_size.to_le_bytes());
+        local_header.extend_from_slice(&uncompressed_size.to_le_bytes());
+        local_header.extend_from_slice(&name_len.to_le_bytes());
+        local_header.extend_from_slice(&0u16.to_le_bytes()); // Extra field length
+        local_header.extend_from_slice(&rel_name_bytes);
+
+        out_file
+            .write_all(&local_header)
+            .map_err(|e| format!("Erreur d'écriture en-tête ZIP : {}", e))?;
+        out_file
+            .write_all(&compressed_bytes)
+            .map_err(|e| format!("Erreur d'écriture données ZIP : {}", e))?;
+
+        current_offset = current_offset
+            .saturating_add(local_header.len() as u32)
+            .saturating_add(compressed_size);
+
+        central_entries.push(ZipCentralEntry {
+            rel_name: rel_name_bytes,
+            crc32: crc,
+            compressed_size,
+            uncompressed_size,
+            local_header_offset,
+        });
+    }
+
+    let central_dir_offset = current_offset;
+    let mut central_dir_size: u32 = 0;
+
+    for entry in &central_entries {
+        let name_len = entry.rel_name.len() as u16;
+        let mut cd_header = Vec::with_capacity(46 + entry.rel_name.len());
+        cd_header.extend_from_slice(&0x02014b50u32.to_le_bytes()); // Signature Central Directory
+        cd_header.extend_from_slice(&20u16.to_le_bytes()); // Version créatrice
+        cd_header.extend_from_slice(&20u16.to_le_bytes()); // Version requise
+        cd_header.extend_from_slice(&0x0800u16.to_le_bytes()); // Bit 11 : UTF-8
+        cd_header.extend_from_slice(&8u16.to_le_bytes()); // Méthode 8 : DEFLATE
+        cd_header.extend_from_slice(&0u16.to_le_bytes()); // Heure
+        cd_header.extend_from_slice(&0x21u16.to_le_bytes()); // Date
+        cd_header.extend_from_slice(&entry.crc32.to_le_bytes());
+        cd_header.extend_from_slice(&entry.compressed_size.to_le_bytes());
+        cd_header.extend_from_slice(&entry.uncompressed_size.to_le_bytes());
+        cd_header.extend_from_slice(&name_len.to_le_bytes());
+        cd_header.extend_from_slice(&0u16.to_le_bytes()); // Extra len
+        cd_header.extend_from_slice(&0u16.to_le_bytes()); // Comment len
+        cd_header.extend_from_slice(&0u16.to_le_bytes()); // Disk number
+        cd_header.extend_from_slice(&0u16.to_le_bytes()); // Internal attrs
+        cd_header.extend_from_slice(&0u32.to_le_bytes()); // External attrs
+        cd_header.extend_from_slice(&entry.local_header_offset.to_le_bytes());
+        cd_header.extend_from_slice(&entry.rel_name);
+
+        out_file
+            .write_all(&cd_header)
+            .map_err(|e| format!("Erreur d'écriture annuaire central ZIP : {}", e))?;
+        central_dir_size = central_dir_size.saturating_add(cd_header.len() as u32);
+    }
+
+    // End of Central Directory Record (22 octets)
+    let count = central_entries.len() as u16;
+    let mut eocd = Vec::with_capacity(22);
+    eocd.extend_from_slice(&0x06054b50u32.to_le_bytes());
+    eocd.extend_from_slice(&0u16.to_le_bytes()); // Disk number
+    eocd.extend_from_slice(&0u16.to_le_bytes()); // Start disk
+    eocd.extend_from_slice(&count.to_le_bytes());
+    eocd.extend_from_slice(&count.to_le_bytes());
+    eocd.extend_from_slice(&central_dir_size.to_le_bytes());
+    eocd.extend_from_slice(&central_dir_offset.to_le_bytes());
+    eocd.extend_from_slice(&0u16.to_le_bytes()); // Comment len
+
+    out_file
+        .write_all(&eocd)
+        .map_err(|e| format!("Erreur de clôture de l'archive ZIP : {}", e))?;
+    out_file
+        .flush()
+        .map_err(|e| format!("Erreur de synchronisation du fichier ZIP : {}", e))?;
+
+    let final_size = fs::metadata(output_zip_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    Ok(final_size)
+}
+
+/// Compresse tous les fichiers et sous-dossiers non-zippés du dossier `99-Archive` d'un projet
+/// en une archive `.zip` horodatée, puis nettoie les éléments sources compressés.
+#[tauri::command]
+pub fn compress_project_archive(
+    app: AppHandle,
+    project_name: String,
+) -> Result<ArchiveCompressionResult, String> {
+    let (_, projects_dir) = init_storage_dirs(&app)?;
+    let valid_project = validate_single_name(&project_name, "project_name")?;
+    let archive_dir = projects_dir.join(&valid_project).join("99-Archive");
+
+    if !archive_dir.exists() || !archive_dir.is_dir() {
+        return Err(format!(
+            "Le dossier 99-Archive du projet « {} » est introuvable.",
+            valid_project
+        ));
+    }
+
+    let read_dir = fs::read_dir(&archive_dir)
+        .map_err(|e| format!("Impossible de lire le dossier 99-Archive : {}", e))?;
+
+    let mut targets_to_zip = Vec::new();
+    let mut original_size = 0u64;
+
+    for entry_res in read_dir {
+        let entry = entry_res.map_err(|e| format!("Entrée illisible : {}", e))?;
+        let path = entry.path();
+        let is_zip = path.is_file()
+            && path
+                .extension()
+                .map(|ext| ext.to_string_lossy().eq_ignore_ascii_case("zip"))
+                .unwrap_or(false);
+
+        if !is_zip {
+            original_size = original_size.saturating_add(calculate_dir_size(&path));
+            targets_to_zip.push(path);
+        }
+    }
+
+    if targets_to_zip.is_empty() {
+        return Err(
+            "Aucun élément non compressé à zipper dans le dossier 99-Archive de ce projet."
+                .to_string(),
+        );
+    }
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let safe_proj_tag: String = valid_project
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+
+    let zip_file_name = format!("Archive_{}_{}.zip", safe_proj_tag, timestamp);
+    let zip_path = archive_dir.join(&zip_file_name);
+
+    let compressed_size = write_zip_archive(&targets_to_zip, &archive_dir, &zip_path)?;
+    let items_compressed = targets_to_zip.len();
+
+    // Suppression sécurisée des éléments sources une fois l'archive ZIP générée
+    for target in targets_to_zip {
+        if target.is_dir() {
+            let _ = fs::remove_dir_all(&target);
+        } else {
+            let _ = fs::remove_file(&target);
+        }
+    }
+
+    Ok(ArchiveCompressionResult {
+        project_name: valid_project,
+        zip_file_name,
+        items_compressed,
+        original_size,
+        compressed_size,
+    })
 }
 
 /// Supprime définitivement tout le contenu présent dans le dossier corbeille (`trash/`).
