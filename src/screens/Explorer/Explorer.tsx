@@ -9,6 +9,7 @@ import {
   getInboxItems,
   getTrashItems,
   getUndoRedoStatus,
+  GlobalSearchResult,
   importExternalPath,
   InboxItem,
   listProjects,
@@ -22,6 +23,8 @@ import {
   renameItem,
   renameProject,
   saveFileBytes,
+  SearchCategoryFilter,
+  searchGlobal,
   StandardFolderType,
   STANDARD_FOLDER_MAP,
   undoLastAction,
@@ -29,6 +32,12 @@ import {
 } from "../../services/storageService";
 import { APP_CONFIG } from "../../theme/config";
 import { ThemeMode } from "../../theme/design_tokens";
+import {
+  formatFolderDisplayName,
+  getUiTerms,
+  LANGUAGE_STORAGE_KEY,
+  LanguageMode,
+} from "../../theme/UI_TERMS";
 import { Topbar } from "./components/Topbar/Topbar";
 import { GridView, GridEntry } from "./components/GridView/GridView";
 import { InboxDrawer } from "./components/InboxDrawer/InboxDrawer";
@@ -165,6 +174,30 @@ export const Explorer: React.FC = () => {
     setTheme((prev) => (prev === "dark" ? "dawn" : "dark"));
   }, []);
 
+  // Gestion de la langue de l'interface (Français par défaut / Anglais)
+  const [language, setLanguage] = useState<LanguageMode>(() => {
+    try {
+      const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      if (saved === "fr" || saved === "en") {
+        return saved;
+      }
+    } catch {
+      // fallback
+    }
+    return "fr";
+  });
+
+  const handleChangeLanguage = useCallback((lang: LanguageMode) => {
+    setLanguage(lang);
+    try {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const terms = getUiTerms(language);
+
   // Interception globale du menu contextuel Chromium / WebView2
   useEffect(() => {
     const handleGlobalContextMenu = (e: MouseEvent) => {
@@ -285,6 +318,48 @@ export const Explorer: React.FC = () => {
 
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchCategory, setSearchCategory] = useState<SearchCategoryFilter>("all");
+  const [globalSearchResults, setGlobalSearchResults] = useState<GlobalSearchResult[]>([]);
+  const [isSearchingGlobal, setIsSearchingGlobal] = useState<boolean>(false);
+
+  const isGlobalSearchActive =
+    searchQuery.trim().length > 0 || searchCategory !== "all";
+
+  // Exécution réactive de la recherche globale (projets & Dropbox) + filtre par catégorie
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed && searchCategory === "all") {
+      setGlobalSearchResults([]);
+      setIsSearchingGlobal(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsSearchingGlobal(true);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const results = await searchGlobal(trimmed, searchCategory);
+        if (!cancelled) {
+          setGlobalSearchResults(results);
+        }
+      } catch (err) {
+        console.error("Erreur lors de la recherche globale :", err);
+        if (!cancelled) {
+          setGlobalSearchResults([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSearchingGlobal(false);
+        }
+      }
+    }, 120);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery, searchCategory, projects, inboxItems]);
 
   // Barre latérale droite (Raccourcis d'applications VespΣr, Chr0nosV3rs)
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState<boolean>(true);
@@ -1965,15 +2040,26 @@ export const Explorer: React.FC = () => {
         projects={projects}
         pinnedProjects={pinnedProjects}
         activeProject={activeProject}
-        isInboxActive={isInboxView}
-        onSelectProject={handleSelectProject}
+        isInboxActive={isInboxView && !isGlobalSearchActive}
+        language={language}
+        onSelectProject={(proj) => {
+          setSearchQuery("");
+          setSearchCategory("all");
+          handleSelectProject(proj);
+        }}
         inboxCount={inboxItems.length}
-        onOpenInbox={() => navigateTo("")}
+        onOpenInbox={() => {
+          setSearchQuery("");
+          setSearchCategory("all");
+          navigateTo("");
+        }}
         onCreateProject={handleCreateProject}
         isSettingsOpen={isShortcutsOpen}
         onToggleSettings={() => setIsShortcutsOpen((prev) => !prev)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        searchCategory={searchCategory}
+        onSearchCategoryChange={setSearchCategory}
         onRefresh={handleRefreshAll}
         canGoBack={canGoBack}
         onGoBack={handleGoBack}
@@ -1989,9 +2075,11 @@ export const Explorer: React.FC = () => {
         onToggleTheme={handleToggleTheme}
         activeSubpath={currentSubpath}
         activeFolderType={currentFolderType}
-        onNavigateSubfolder={(project, subfolder, folderType) =>
-          navigateTo(project, subfolder, folderType)
-        }
+        onNavigateSubfolder={(project, subfolder, folderType) => {
+          setSearchQuery("");
+          setSearchCategory("all");
+          navigateTo(project, subfolder, folderType);
+        }}
         onOpenInSecondary={handleOpenInSecondary}
         onRenameProject={(project) => handleStartRenameProject(project)}
         onDeleteProject={(project) => setProjectToDelete(project)}
@@ -2007,23 +2095,215 @@ export const Explorer: React.FC = () => {
         </div>
       )}
 
-      {/* Panneau d'options (icône engrenage) : configuration des projets épinglés / favoris */}
+      {/* Panneau d'options (icône engrenage) : langue de l'interface & projets épinglés */}
       <ShortcutsPanel
         isOpen={isShortcutsOpen}
         projects={projects}
         pinnedProjects={pinnedProjects}
+        language={language}
+        onChangeLanguage={handleChangeLanguage}
         onTogglePinProject={handleTogglePinProject}
         onClose={() => setIsShortcutsOpen(false)}
       />
 
       <main className="explorer-screen__body">
-        {isInboxView ? (
+        {isGlobalSearchActive ? (
+          <section className="explorer-global-search">
+            <header className="explorer-global-search__header">
+              <div className="explorer-global-search__title-group">
+                <div className="explorer-global-search__title-row">
+                  <svg
+                    className="explorer-global-search__icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <h2 className="explorer-global-search__title">
+                    {terms.globalSearch.title}
+                  </h2>
+                  <span className="explorer-global-search__count">
+                    {globalSearchResults.length}
+                  </span>
+                </div>
+                <p className="explorer-global-search__subtitle">
+                  {searchCategory === "all"
+                    ? terms.globalSearch.subtitleAll
+                    : terms.globalSearch.subtitleFiltered(
+                        terms.standardFolders[searchCategory]
+                      )}
+                </p>
+              </div>
+
+              {/* Filtres rapides de présélection par catégorie de dossier */}
+              <div className="explorer-global-search__actions">
+                <div className="explorer-global-search__pills">
+                  {(
+                    ["all", "docs", "assets", "sessions", "archive"] as const
+                  ).map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      className={`explorer-global-search__pill ${
+                        searchCategory === cat
+                          ? "explorer-global-search__pill--active"
+                          : ""
+                      }`}
+                      onClick={() => setSearchCategory(cat)}
+                    >
+                      {terms.standardFolders[cat]}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  className="explorer-global-search__clear-btn"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setSearchCategory("all");
+                  }}
+                >
+                  ✕ {terms.globalSearch.clearBtn}
+                </button>
+              </div>
+            </header>
+
+            <div className="explorer-global-search__results">
+              {isSearchingGlobal ? (
+                <div className="explorer-global-search__empty">
+                  <span>...</span>
+                </div>
+              ) : globalSearchResults.length === 0 ? (
+                <div className="explorer-global-search__empty">
+                  <h4>{terms.globalSearch.emptyTitle}</h4>
+                  <p>{terms.globalSearch.emptySubtitle}</p>
+                </div>
+              ) : (
+                <div className="explorer-global-search__grid">
+                  {globalSearchResults.map((res) => {
+                    const isInboxItem = res.projet === "__inbox__";
+                    const projectBadge = isInboxItem
+                      ? terms.globalSearch.inboxBadge
+                      : res.projet;
+                    const displayLabel = res.est_dossier
+                      ? formatFolderDisplayName(
+                          res.nom,
+                          res.folder_type,
+                          language
+                        )
+                      : res.nom;
+                    const categoryLabel = res.folder_type
+                      ? terms.standardFolders[res.folder_type]
+                      : null;
+                    const formattedParent = res.dossier_parent
+                      ? res.dossier_parent
+                          .split("/")
+                          .map((seg) =>
+                            formatFolderDisplayName(seg, undefined, language)
+                          )
+                          .join(" / ")
+                      : "";
+
+                    return (
+                      <button
+                        key={`${res.projet}::${res.chemin_relatif}`}
+                        type="button"
+                        className="explorer-global-search__card"
+                        onClick={() => {
+                          setSearchQuery("");
+                          setSearchCategory("all");
+                          if (isInboxItem) {
+                            navigateTo("");
+                            return;
+                          }
+                          if (res.est_dossier) {
+                            navigateTo(
+                              res.projet,
+                              res.chemin_relatif,
+                              res.folder_type || undefined
+                            );
+                          } else {
+                            navigateTo(
+                              res.projet,
+                              res.dossier_parent || undefined,
+                              res.folder_type || undefined
+                            );
+                            if (isPreviewableFile(res.nom)) {
+                              setIsSplitViewActive(false);
+                              setPreviewFile({
+                                project: res.projet,
+                                subpath: res.chemin_relatif,
+                                label: res.nom,
+                                size: res.taille,
+                              });
+                            }
+                          }
+                        }}
+                        title={`${projectBadge} — ${res.chemin_relatif}`}
+                      >
+                        <div
+                          className={`explorer-global-search__card-icon ${
+                            res.est_dossier
+                              ? "explorer-global-search__card-icon--folder"
+                              : "explorer-global-search__card-icon--file"
+                          }`}
+                        >
+                          {res.est_dossier ? (
+                            <svg viewBox="0 0 20 20" fill="currentColor">
+                              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                            </svg>
+                          ) : (
+                            <svg
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                              <polyline points="14 2 14 8 20 8" />
+                            </svg>
+                          )}
+                        </div>
+
+                        <div className="explorer-global-search__card-body">
+                          <span className="explorer-global-search__card-name">
+                            {displayLabel}
+                          </span>
+                          <div className="explorer-global-search__card-badges">
+                            <span className="explorer-global-search__badge explorer-global-search__badge--project">
+                              {projectBadge}
+                            </span>
+                            {categoryLabel && (
+                              <span className="explorer-global-search__badge explorer-global-search__badge--cat">
+                                {categoryLabel}
+                              </span>
+                            )}
+                            {formattedParent && (
+                              <span className="explorer-global-search__path">
+                                {formattedParent}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
+        ) : isInboxView ? (
           <InboxDrawer
             items={inboxItems}
             projects={projects}
             defaultTargetProject={activeProject}
             availableSubfolders={projectSubfoldersMap}
             searchQuery={searchQuery}
+            language={language}
             onRefreshInbox={refreshInbox}
             onSelectProject={handleSelectProject}
             onMoveItem={handleMoveInboxItem}
@@ -2035,6 +2315,7 @@ export const Explorer: React.FC = () => {
             hasActiveProject={Boolean(activeProject)}
             activeProject={activeProject}
             currentPathLabel={currentSubpath}
+            language={language}
             onNavigateBreadcrumb={handleNavigateBreadcrumb}
             entries={primaryGridEntries}
             selectedEntryId={selectedEntryId}
@@ -2115,6 +2396,7 @@ export const Explorer: React.FC = () => {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
+          language={language}
           targetEntry={contextMenu.targetEntry}
           hasClipboard={Boolean(clipboard)}
           onCopy={handleCopy}

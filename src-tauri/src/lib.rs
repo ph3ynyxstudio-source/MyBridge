@@ -7,8 +7,8 @@ use storage::{
     get_file_absolute_path, get_file_metadata, get_inbox_items, get_trash_items,
     get_undo_redo_status, import_external_path, init_storage_dirs, list_projects, move_inbox_item,
     move_item, move_to_trash, open_file_in_system, read_file_text, read_project_contents,
-    redo_last_action, rename_item, rename_project, save_file_bytes, undo_last_action,
-    write_text_file,
+    redo_last_action, rename_item, rename_project, save_file_bytes, search_global,
+    undo_last_action, write_text_file,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -46,7 +46,8 @@ pub fn run() {
             save_file_bytes,
             get_undo_redo_status,
             undo_last_action,
-            redo_last_action
+            redo_last_action,
+            search_global
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

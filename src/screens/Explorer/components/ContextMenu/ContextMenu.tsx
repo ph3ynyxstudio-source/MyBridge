@@ -1,9 +1,15 @@
 import React, { useEffect, useRef } from "react";
+import {
+  formatFolderDisplayName,
+  getUiTerms,
+  LanguageMode,
+} from "../../../../theme/UI_TERMS";
 import "./ContextMenu.css";
 
 export interface ContextMenuProps {
   x: number;
   y: number;
+  language?: LanguageMode;
   targetEntry?: { id: string; label: string; isFolder: boolean };
   hasClipboard: boolean;
   onCopy: () => void;
@@ -23,6 +29,7 @@ export interface ContextMenuProps {
 export const ContextMenu: React.FC<ContextMenuProps> = ({
   x,
   y,
+  language = "fr",
   targetEntry,
   hasClipboard,
   onCopy,
@@ -39,6 +46,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onDeleteProject,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const terms = getUiTerms(language);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -77,7 +85,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       {targetEntry ? (
         <>
           <div className="context-menu__header">
-            <span className="context-menu__target-name">{targetEntry.label}</span>
+            <span className="context-menu__target-name">
+              {targetEntry.isFolder
+                ? formatFolderDisplayName(targetEntry.label, undefined, language)
+                : targetEntry.label}
+            </span>
           </div>
           <div className="context-menu__divider" />
 
@@ -96,7 +108,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                 <line x1="12" y1="3" x2="12" y2="21" />
                 <polyline points="15 9 18 12 15 15" />
               </svg>
-              <span>Ouvrir dans le panneau secondaire</span>
+              <span>{terms.contextMenu.openInSecondary}</span>
             </button>
           )}
 
@@ -114,7 +126,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                 <circle cx="12" cy="12" r="3" />
               </svg>
-              <span>Aperçu du fichier</span>
+              <span>{terms.contextMenu.previewFile}</span>
             </button>
           )}
 
@@ -133,11 +145,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                 <polyline points="15 3 21 3 21 9" />
                 <line x1="10" y1="14" x2="21" y2="3" />
               </svg>
-              <span>Ouvrir avec le système</span>
+              <span>{terms.contextMenu.openInSystem}</span>
             </button>
           )}
 
-          {/* Copier / Couper / Supprimer uniquement sur les éléments manipulables (id non vide) */}
+          {/* Copier / Couper / Renommer / Supprimer uniquement sur les éléments manipulables (id non vide) */}
           {targetEntry.id ? (
             <>
               <button
@@ -152,7 +164,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
-                <span>Copier</span>
+                <span>{terms.contextMenu.copy}</span>
               </button>
 
               <button
@@ -170,7 +182,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                   <line x1="14.47" y1="14.48" x2="20" y2="20" />
                   <line x1="8.12" y1="8.12" x2="12" y2="12" />
                 </svg>
-                <span>Couper</span>
+                <span>{terms.contextMenu.cut}</span>
               </button>
 
               {onRenameItem && (
@@ -186,7 +198,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                   </svg>
-                  <span>Renommer</span>
+                  <span>{terms.contextMenu.rename}</span>
                 </button>
               )}
 
@@ -204,7 +216,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                   <polyline points="3 6 5 6 21 6" />
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                 </svg>
-                <span>Supprimer</span>
+                <span>{terms.contextMenu.delete}</span>
               </button>
             </>
           ) : (
@@ -222,7 +234,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                   </svg>
-                  <span>Renommer le projet</span>
+                  <span>{terms.contextMenu.renameProject}</span>
                 </button>
               )}
 
@@ -240,7 +252,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                   <path d="M3 12a9 9 0 0 0 15.5 6.3L21 16" />
                   <path d="M16 16h5v5" />
                 </svg>
-                <span>Actualiser</span>
+                <span>{terms.contextMenu.refresh}</span>
               </button>
 
               {onDeleteProject && (
@@ -258,7 +270,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                       <polyline points="3 6 5 6 21 6" />
                       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                     </svg>
-                    <span>Supprimer le projet</span>
+                    <span>{terms.contextMenu.deleteProject}</span>
                   </button>
                 </>
               )}
@@ -284,7 +296,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
               <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
             </svg>
-            <span>Coller</span>
+            <span>{terms.contextMenu.paste}</span>
           </button>
 
           <div className="context-menu__divider" />
@@ -303,7 +315,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               <path d="M3 12a9 9 0 0 0 15.5 6.3L21 16" />
               <path d="M16 16h5v5" />
             </svg>
-            <span>Actualiser</span>
+            <span>{terms.contextMenu.refresh}</span>
           </button>
         </>
       )}

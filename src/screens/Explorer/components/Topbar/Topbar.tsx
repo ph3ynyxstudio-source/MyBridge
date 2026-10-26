@@ -1,7 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
-import { UI_TERMS } from "../../../../theme/UI_TERMS";
+import { getUiTerms, LanguageMode } from "../../../../theme/UI_TERMS";
 import { ThemeMode } from "../../../../theme/design_tokens";
-import { StandardFolderType } from "../../../../services/storageService";
+import {
+  SearchCategoryFilter,
+  StandardFolderType,
+} from "../../../../services/storageService";
 import { NewProjectInput } from "../NewProjectInput/NewProjectInput";
 import { ProjectTabPopover } from "./ProjectTabPopover";
 import "./Topbar.css";
@@ -11,6 +14,7 @@ export interface TopbarProps {
   pinnedProjects: string[];
   activeProject: string;
   isInboxActive?: boolean;
+  language?: LanguageMode;
   onSelectProject: (project: string) => void;
   inboxCount: number;
   onOpenInbox: () => void;
@@ -19,6 +23,8 @@ export interface TopbarProps {
   onToggleSettings: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  searchCategory?: SearchCategoryFilter;
+  onSearchCategoryChange?: (cat: SearchCategoryFilter) => void;
   onRefresh: () => void;
   canGoBack?: boolean;
   onGoBack?: () => void;
@@ -51,6 +57,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   pinnedProjects,
   activeProject,
   isInboxActive = false,
+  language = "fr",
   onSelectProject,
   inboxCount,
   onOpenInbox,
@@ -59,6 +66,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   onToggleSettings,
   searchQuery,
   onSearchChange,
+  searchCategory = "all",
+  onSearchCategoryChange,
   onRefresh,
   canGoBack = false,
   onGoBack,
@@ -79,6 +88,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   onRenameProject,
   onDeleteProject,
 }) => {
+  const terms = getUiTerms(language);
   const [popoverProject, setPopoverProject] = useState<{
     project: string;
     x: number;
@@ -190,8 +200,8 @@ export const Topbar: React.FC<TopbarProps> = ({
             setCreatePopoverX(null);
             onOpenInbox();
           }}
-          title={UI_TERMS.topbar.inboxTitle}
-          aria-label={UI_TERMS.topbar.inboxTitle}
+          title={terms.topbar.inboxTitle}
+          aria-label={terms.topbar.inboxTitle}
         >
           <svg
             className="topbar__brand-icon"
@@ -207,11 +217,11 @@ export const Topbar: React.FC<TopbarProps> = ({
             <path d="M18 18V7" />
             <path d="M2 14c2.5-1.5 4-4 4-7 2.5 4.5 9.5 4.5 12 0 0 3 1.5 5.5 4 7" />
           </svg>
-          <span className="topbar__brand-title">{UI_TERMS.appTitle}</span>
+          <span className="topbar__brand-title">{terms.appTitle}</span>
           {inboxCount > 0 && (
             <span
               className="topbar__inbox-badge"
-              aria-label={UI_TERMS.topbar.inboxAlertAlt}
+              aria-label={terms.topbar.inboxAlertAlt}
             >
               !
             </span>
@@ -221,7 +231,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         <span className="topbar__divider" aria-hidden="true" />
 
         {/* Onglets de projets épinglés suivis du bouton (+) */}
-        <nav className="topbar__tabs" aria-label="Projets épinglés">
+        <nav className="topbar__tabs" aria-label={terms.shortcutsPanel.shortcutsSection}>
           {pinnedProjects.map((project) => {
             const isActive = !isInboxActive && project === activeProject;
             return (
@@ -231,7 +241,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                   className={`topbar__tab ${isActive ? "topbar__tab--active" : ""}`}
                   onClick={(e) => handleTabClick(e, project)}
                   onDoubleClick={(e) => handleTabDoubleClick(e, project)}
-                  title={`Clic simple : sous-dossiers • Double-clic : racine (${project})`}
+                  title={terms.topbar.tabTooltip(project)}
                 >
                   {project}
                 </button>
@@ -247,8 +257,8 @@ export const Topbar: React.FC<TopbarProps> = ({
               createPopoverX !== null ? "topbar__icon-btn--active" : ""
             }`}
             onClick={handleToggleCreatePopover}
-            title="Créer un nouveau projet (+)"
-            aria-label="Créer un nouveau projet (+)"
+            title={terms.topbar.addShortcut}
+            aria-label={terms.topbar.addShortcut}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="12" y1="4" x2="12" y2="20" />
@@ -263,6 +273,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         <ProjectTabPopover
           project={popoverProject.project}
           x={popoverProject.x}
+          language={language}
           activeSubpath={
             popoverProject.project === activeProject ? activeSubpath : undefined
           }
@@ -299,7 +310,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         </div>
       )}
 
-      {/* ZONE DROITE : Navigation Arrière/Avant, Undo/Redo, Recherche, Actualiser, Sélecteur de Thème, Options */}
+      {/* ZONE DROITE : Navigation Arrière/Avant, Undo/Redo, Recherche Globale + Filtre Dossier, Actualiser, Sélecteur de Thème, Options */}
       <div className="topbar__zone topbar__zone--right">
         <div className="topbar__nav-arrows">
           <button
@@ -309,8 +320,8 @@ export const Topbar: React.FC<TopbarProps> = ({
             }`}
             disabled={!canGoBack}
             onClick={onGoBack}
-            title={UI_TERMS.topbar.navBack}
-            aria-label={UI_TERMS.topbar.navBack}
+            title={terms.topbar.navBack}
+            aria-label={terms.topbar.navBack}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
               <path d="M19 12H5" />
@@ -324,8 +335,8 @@ export const Topbar: React.FC<TopbarProps> = ({
             }`}
             disabled={!canGoForward}
             onClick={onGoForward}
-            title={UI_TERMS.topbar.navForward}
-            aria-label={UI_TERMS.topbar.navForward}
+            title={terms.topbar.navForward}
+            aria-label={terms.topbar.navForward}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
               <path d="M5 12h14" />
@@ -337,7 +348,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         <span className="topbar__divider" aria-hidden="true" />
 
         {/* Boutons discrets Undo / Redo (5 dernières actions de fichiers) */}
-        <div className="topbar__undo-group" role="group" aria-label="Annuler ou rétablir">
+        <div className="topbar__undo-group" role="group" aria-label="Undo / Redo">
           <button
             type="button"
             className={`topbar__icon-btn ${
@@ -347,13 +358,13 @@ export const Topbar: React.FC<TopbarProps> = ({
             onClick={onUndo}
             title={
               undoLabel
-                ? `Annuler : ${undoLabel} (Ctrl+Z)`
-                : UI_TERMS.topbar.undo
+                ? `${terms.topbar.undo} — ${undoLabel}`
+                : terms.topbar.undo
             }
             aria-label={
               undoLabel
-                ? `Annuler : ${undoLabel}`
-                : UI_TERMS.topbar.undo
+                ? `${terms.topbar.undo} — ${undoLabel}`
+                : terms.topbar.undo
             }
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
@@ -370,13 +381,13 @@ export const Topbar: React.FC<TopbarProps> = ({
             onClick={onRedo}
             title={
               redoLabel
-                ? `Rétablir : ${redoLabel} (Ctrl+Y)`
-                : UI_TERMS.topbar.redo
+                ? `${terms.topbar.redo} — ${redoLabel}`
+                : terms.topbar.redo
             }
             aria-label={
               redoLabel
-                ? `Rétablir : ${redoLabel}`
-                : UI_TERMS.topbar.redo
+                ? `${terms.topbar.redo} — ${redoLabel}`
+                : terms.topbar.redo
             }
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
@@ -386,27 +397,44 @@ export const Topbar: React.FC<TopbarProps> = ({
           </button>
         </div>
 
-        <div className="topbar__search-wrapper">
-          <input
-            type="search"
-            className="topbar__search-input"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder={
-              isInboxActive
-                ? "Rechercher dans la Boîte de dépôt..."
-                : UI_TERMS.topbar.searchPlaceholder
+        {/* Barre de recherche globale combinée avec présélection de catégorie de dossier */}
+        <div className="topbar__search-group">
+          <select
+            className={`topbar__search-category ${
+              searchCategory !== "all" ? "topbar__search-category--active" : ""
+            }`}
+            value={searchCategory}
+            onChange={(e) =>
+              onSearchCategoryChange?.(e.target.value as SearchCategoryFilter)
             }
-            aria-label={UI_TERMS.topbar.searchPlaceholder}
-          />
+            title={terms.topbar.searchCategoryLabel}
+            aria-label={terms.topbar.searchCategoryLabel}
+          >
+            <option value="all">{terms.standardFolders.all}</option>
+            <option value="docs">{terms.standardFolders.docs}</option>
+            <option value="assets">{terms.standardFolders.assets}</option>
+            <option value="sessions">{terms.standardFolders.sessions}</option>
+            <option value="archive">{terms.standardFolders.archive}</option>
+          </select>
+
+          <div className="topbar__search-wrapper">
+            <input
+              type="search"
+              className="topbar__search-input"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder={terms.topbar.searchPlaceholder}
+              aria-label={terms.topbar.searchPlaceholder}
+            />
+          </div>
         </div>
 
         <button
           type="button"
           className="topbar__icon-btn topbar__icon-btn--accent"
           onClick={onRefresh}
-          title={UI_TERMS.topbar.refresh}
-          aria-label={UI_TERMS.topbar.refresh}
+          title={terms.topbar.refresh}
+          aria-label={terms.topbar.refresh}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1">
             <path d="M21 12a9 9 0 0 0-15.5-6.3L3 8" />
@@ -421,12 +449,12 @@ export const Topbar: React.FC<TopbarProps> = ({
           type="button"
           className={`topbar__theme-toggle topbar__theme-toggle--${theme}`}
           onClick={onToggleTheme}
-          title={theme === "dark" ? "Passer au thème Aube (Brume Matinale)" : "Passer au thème Sombre"}
-          aria-label={UI_TERMS.topbar.themeToggle}
+          title={terms.topbar.themeToggle}
+          aria-label={terms.topbar.themeToggle}
         >
           <span
             className={`topbar__theme-icon ${theme === "dark" ? "topbar__theme-icon--active" : ""}`}
-            title="Thème Sombre"
+            title="Dark"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
@@ -434,7 +462,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           </span>
           <span
             className={`topbar__theme-icon ${theme === "dawn" ? "topbar__theme-icon--active" : ""}`}
-            title="Thème Aube"
+            title="Dawn"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
               <circle cx="12" cy="12" r="5" />
@@ -451,7 +479,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           <span className="topbar__theme-thumb" aria-hidden="true" />
         </button>
 
-        {/* Bouton Options (icône engrenage) : configuration des projets épinglés / favoris */}
+        {/* Bouton Options (icône engrenage) : configuration des projets épinglés & langue */}
         <button
           type="button"
           className={`topbar__icon-btn topbar__icon-btn--accent topbar__settings-btn ${
@@ -462,8 +490,8 @@ export const Topbar: React.FC<TopbarProps> = ({
             setCreatePopoverX(null);
             onToggleSettings();
           }}
-          title={UI_TERMS.topbar.settings}
-          aria-label={UI_TERMS.topbar.settings}
+          title={terms.topbar.settings}
+          aria-label={terms.topbar.settings}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="3" />

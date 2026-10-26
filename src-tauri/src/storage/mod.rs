@@ -1570,3 +1570,232 @@ pub fn empty_trash(app: AppHandle) -> Result<(), String> {
 
     Ok(())
 }
+
+/// Résultat unitaire d'une recherche globale à travers l'ensemble des projets et la Boîte de dépôt.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlobalSearchResult {
+    pub nom: String,
+    /// Nom du projet parent (ou `"__inbox__"` si l'élément se trouve dans `00-Dropbox`).
+    pub projet: String,
+    /// Chemin relatif depuis la racine du projet ou de la Boîte de dépôt (ex: `"01-Docs/note.md"`).
+    pub chemin_relatif: String,
+    /// Sous-chemin du dossier parent (ex: `"01-Docs"`, ou `""` si à la racine).
+    pub dossier_parent: String,
+    /// Code de catégorie structurelle (`"docs"`, `"assets"`, `"sessions"`, `"archive"`).
+    pub folder_type: Option<String>,
+    pub taille: u64,
+    pub est_dossier: bool,
+    pub date_modification: u64,
+}
+
+const MAX_SEARCH_RESULTS: usize = 250;
+
+/// Parcourt récursivement un répertoire pour collecter les éléments correspondant à la requête.
+fn collect_search_matches(
+    dir_path: &Path,
+    root_path: &Path,
+    project_name: &str,
+    inherited_category: Option<&str>,
+    query_lower: &str,
+    results: &mut Vec<GlobalSearchResult>,
+) {
+    if results.len() >= MAX_SEARCH_RESULTS {
+        return;
+    }
+
+    let Ok(read_dir) = fs::read_dir(dir_path) else {
+        return;
+    };
+
+    for entry_res in read_dir.flatten() {
+        if results.len() >= MAX_SEARCH_RESULTS {
+            break;
+        }
+
+        let path = entry_res.path();
+        let Ok(metadata) = fs::metadata(&path).or_else(|_| entry_res.metadata()) else {
+            continue;
+        };
+
+        let nom = entry_res.file_name().to_string_lossy().to_string();
+        let est_dossier = metadata.is_dir();
+
+        let direct_cat = if est_dossier {
+            resolve_folder_type(&nom)
+        } else {
+            None
+        };
+        let effective_cat = direct_cat.or(inherited_category);
+
+        // Si un filtre de catégorie est actif mais qu'on a déjà filtré à la racine,
+        // `inherited_category` vaut Some(cat).
+        let name_lower = nom.to_lowercase();
+        let matches_query = if query_lower.is_empty() {
+            // Lorsque la requête texte est vide (présélection de dossier uniquement),
+            // on affiche le contenu du dossier de catégorie sans répéter le dossier racine lui-même
+            direct_cat.is_none()
+        } else {
+            name_lower.contains(query_lower)
+        };
+
+        if matches_query {
+            let rel_path = path
+                .strip_prefix(root_path)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+
+            let parent_rel = path
+                .parent()
+                .and_then(|p| p.strip_prefix(root_path).ok())
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
+
+            let taille = if est_dossier { 0 } else { metadata.len() };
+            let date_modification = extract_modified_timestamp(&metadata);
+
+            results.push(GlobalSearchResult {
+                nom: nom.clone(),
+                projet: project_name.to_string(),
+                chemin_relatif: rel_path,
+                dossier_parent: parent_rel,
+                folder_type: effective_cat.map(|s| s.to_string()),
+                taille,
+                est_dossier,
+                date_modification,
+            });
+        }
+
+        if est_dossier {
+            collect_search_matches(
+                &path,
+                root_path,
+                project_name,
+                effective_cat,
+                query_lower,
+                results,
+            );
+        }
+    }
+}
+
+/// Recherche globale à travers l'ensemble des projets (et la Boîte de dépôt `00-Dropbox`),
+/// avec filtre de présélection optionnel par catégorie de dossier standardisé
+/// (`"docs"`, `"assets"`, `"sessions"`, `"archive"`).
+#[tauri::command]
+pub fn search_global(
+    app: AppHandle,
+    query: String,
+    category_filter: Option<String>,
+) -> Result<Vec<GlobalSearchResult>, String> {
+    let (inbox_dir, projects_dir) = init_storage_dirs(&app)?;
+    let query_lower = query.trim().to_lowercase();
+
+    let normalized_category = category_filter
+        .as_deref()
+        .map(|c| c.trim().to_lowercase())
+        .filter(|c| !c.is_empty() && c != "all");
+
+    if query_lower.is_empty() && normalized_category.is_none() {
+        return Ok(Vec::new());
+    }
+
+    let std_subfolder_for_cat = normalized_category.as_deref().and_then(|cat| match cat {
+        "docs" => Some(("docs", "01-Docs")),
+        "assets" => Some(("assets", "02-Assets")),
+        "sessions" => Some(("sessions", "03-Sessions")),
+        "archive" => Some(("archive", "99-Archive")),
+        _ => None,
+    });
+
+    let mut results = Vec::new();
+
+    // 1. Parcourir l'ensemble des projets dans `projects/`
+    if let Ok(proj_entries) = fs::read_dir(&projects_dir) {
+        let mut project_dirs: Vec<(String, PathBuf)> = proj_entries
+            .flatten()
+            .filter_map(|e| {
+                let p = e.path();
+                if p.is_dir() {
+                    Some((e.file_name().to_string_lossy().to_string(), p))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        project_dirs.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+
+        for (proj_name, proj_path) in project_dirs {
+            if let Some((cat_code, std_folder_name)) = std_subfolder_for_cat {
+                let cat_dir = proj_path.join(std_folder_name);
+                if cat_dir.exists() && cat_dir.is_dir() {
+                    collect_search_matches(
+                        &cat_dir,
+                        &proj_path,
+                        &proj_name,
+                        Some(cat_code),
+                        &query_lower,
+                        &mut results,
+                    );
+                }
+            } else {
+                collect_search_matches(
+                    &proj_path,
+                    &proj_path,
+                    &proj_name,
+                    None,
+                    &query_lower,
+                    &mut results,
+                );
+            }
+        }
+    }
+
+    // 2. Parcourir également la Boîte de dépôt (`C:\Ph3yNyx.OS\00-Dropbox`)
+    if inbox_dir.exists() && inbox_dir.is_dir() {
+        if let Some((cat_code, _)) = std_subfolder_for_cat {
+            // Si un dossier dans 00-Dropbox contient ou correspond à la catégorie ciblée
+            if let Ok(inbox_entries) = fs::read_dir(&inbox_dir) {
+                for entry in inbox_entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if resolve_folder_type(&name) == Some(cat_code) {
+                            collect_search_matches(
+                                &path,
+                                &inbox_dir,
+                                "__inbox__",
+                                Some(cat_code),
+                                &query_lower,
+                                &mut results,
+                            );
+                        }
+                    }
+                }
+            }
+        } else if !query_lower.is_empty() {
+            collect_search_matches(
+                &inbox_dir,
+                &inbox_dir,
+                "__inbox__",
+                None,
+                &query_lower,
+                &mut results,
+            );
+        }
+    }
+
+    // Tri pertinent : correspondances préfixes en premier, puis dossiers, puis ordre alphabétique
+    results.sort_by(|a, b| {
+        let a_starts = !query_lower.is_empty() && a.nom.to_lowercase().starts_with(&query_lower);
+        let b_starts = !query_lower.is_empty() && b.nom.to_lowercase().starts_with(&query_lower);
+        b_starts
+            .cmp(&a_starts)
+            .then_with(|| b.est_dossier.cmp(&a.est_dossier))
+            .then_with(|| a.nom.to_lowercase().cmp(&b.nom.to_lowercase()))
+            .then_with(|| a.projet.to_lowercase().cmp(&b.projet.to_lowercase()))
+    });
+
+    Ok(results)
+}

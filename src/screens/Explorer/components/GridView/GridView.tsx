@@ -3,7 +3,11 @@ import { FolderCard, TileKind } from "../../../../components/FolderCard/FolderCa
 import { Breadcrumb } from "../Breadcrumb/Breadcrumb";
 import { PreviewDrawer, PreviewFile } from "../PreviewDrawer/PreviewDrawer";
 import { StandardFolderType } from "../../../../services/storageService";
-import { UI_TERMS } from "../../../../theme/UI_TERMS";
+import {
+  formatFolderDisplayName,
+  getUiTerms,
+  LanguageMode,
+} from "../../../../theme/UI_TERMS";
 import "./GridView.css";
 
 export interface GridEntry {
@@ -20,6 +24,7 @@ export interface GridViewProps {
   hasActiveProject: boolean;
   activeProject?: string;
   currentPathLabel?: string;
+  language?: LanguageMode;
   onNavigateBreadcrumb?: (targetSubpath?: string) => void;
   entries: GridEntry[];
   selectedEntryId: string;
@@ -71,6 +76,7 @@ export const GridView: React.FC<GridViewProps> = ({
   hasActiveProject,
   activeProject,
   currentPathLabel,
+  language = "fr",
   onNavigateBreadcrumb,
   entries,
   selectedEntryId,
@@ -113,6 +119,7 @@ export const GridView: React.FC<GridViewProps> = ({
 }) => {
   const isRightPanelOpen = Boolean(previewFile || isSplitViewActive);
   const primaryContainerRef = useRef<HTMLDivElement>(null);
+  const terms = getUiTerms(language);
 
   // États de retour visuel lors du survol en Glisser-Déposer sur le fond vide des panneaux
   const [isPrimaryDragOver, setIsPrimaryDragOver] = useState(false);
@@ -270,10 +277,10 @@ export const GridView: React.FC<GridViewProps> = ({
         {!hasActiveProject ? (
           <div className="grid-view__empty-card">
             <h3 className="grid-view__empty-title">
-              {UI_TERMS.gridView.noProjectsTitle}
+              {terms.gridView.noProjectsTitle}
             </h3>
             <p className="grid-view__empty-subtitle">
-              {UI_TERMS.gridView.noProjectsSubtitle}
+              {terms.gridView.noProjectsSubtitle}
             </p>
           </div>
         ) : (
@@ -283,12 +290,13 @@ export const GridView: React.FC<GridViewProps> = ({
               <Breadcrumb
                 projectName={activeProject || ""}
                 subpath={currentPathLabel}
+                language={language}
                 onNavigate={onNavigateBreadcrumb || (() => {})}
                 onDropOnSegment={onDropOnBreadcrumb}
               />
               {selectedCount > 1 && (
                 <div className="grid-view__selection-badge">
-                  <span>{selectedCount} éléments sélectionnés</span>
+                  <span>{terms.gridView.selectedCount(selectedCount)}</span>
                   {onClearSelection && (
                     <button
                       type="button"
@@ -297,7 +305,7 @@ export const GridView: React.FC<GridViewProps> = ({
                         e.stopPropagation();
                         onClearSelection();
                       }}
-                      title="Effacer la sélection"
+                      title={terms.gridView.clearSelection}
                     >
                       ✕
                     </button>
@@ -310,10 +318,10 @@ export const GridView: React.FC<GridViewProps> = ({
             {entries.length === 0 ? (
               <div className="grid-view__empty-banner">
                 <h4 className="grid-view__empty-title">
-                  {UI_TERMS.gridView.emptyProjectTitle}
+                  {terms.gridView.emptyProjectTitle}
                 </h4>
                 <p className="grid-view__empty-subtitle">
-                  {UI_TERMS.gridView.emptyProjectSubtitle}
+                  {terms.gridView.emptyProjectSubtitle}
                 </p>
               </div>
             ) : (
@@ -322,11 +330,14 @@ export const GridView: React.FC<GridViewProps> = ({
                   const isSelected = selectedEntryIds
                     ? selectedEntryIds.has(entry.id)
                     : entry.id === selectedEntryId;
+                  const displayLabel = entry.isFolder
+                    ? formatFolderDisplayName(entry.label, entry.folderType, language)
+                    : entry.label;
                   return (
                     <FolderCard
                       key={entry.id}
                       entryId={entry.id}
-                      label={entry.label}
+                      label={displayLabel}
                       kind={entry.kind}
                       selected={isSelected}
                       onClick={(e) => onSelectEntry(entry, e)}
@@ -360,9 +371,9 @@ export const GridView: React.FC<GridViewProps> = ({
                   );
                 })}
 
-                {/* Tuile d'action « add folder/Files » alignée dans la grille */}
+                {/* Tuile d'action « Ajouter dossier / fichiers » alignée dans la grille */}
                 <FolderCard
-                  label={UI_TERMS.gridView.addTileLabel}
+                  label={terms.gridView.addTileLabel}
                   kind="add"
                   selected={false}
                   onClick={() => onAddFolderOrFiles()}
@@ -450,7 +461,7 @@ export const GridView: React.FC<GridViewProps> = ({
                   className="grid-view__secondary-select"
                   value={secondaryProject}
                   onChange={(e) => onSelectSecondaryProject(e.target.value)}
-                  aria-label={UI_TERMS.gridView.splitViewSelectProject}
+                  aria-label={terms.gridView.splitViewSelectProject}
                 >
                   {projects.map((proj) => (
                     <option key={proj} value={proj}>
@@ -493,6 +504,7 @@ export const GridView: React.FC<GridViewProps> = ({
             <Breadcrumb
               projectName={secondaryProject}
               subpath={secondaryPathLabel}
+              language={language}
               onNavigate={(target) => {
                 if (onNavigateSecondaryBreadcrumb) {
                   onNavigateSecondaryBreadcrumb(target);
@@ -507,14 +519,18 @@ export const GridView: React.FC<GridViewProps> = ({
           {/* Grille du second projet */}
           {secondaryEntries.length === 0 ? (
             <div className="grid-view__secondary-empty">
-              {UI_TERMS.gridView.emptySecondary}
+              {terms.gridView.emptySecondary}
             </div>
           ) : (
             <div className="grid-view__secondary-tiles">
-              {secondaryEntries.map((sub) => (
+              {secondaryEntries.map((sub) => {
+                const subDisplayLabel = sub.isFolder
+                  ? formatFolderDisplayName(sub.label, sub.folderType, language)
+                  : sub.label;
+                return (
                 <FolderCard
                   key={sub.id}
-                  label={sub.label}
+                  label={subDisplayLabel}
                   kind={sub.kind}
                   selected={sub.id === selectedSecondaryEntryId}
                   onClick={() => onSelectSecondaryEntry && onSelectSecondaryEntry(sub)}
@@ -556,7 +572,8 @@ export const GridView: React.FC<GridViewProps> = ({
                     }
                   }}
                 />
-              ))}
+                );
+              })}
             </div>
           )}
         </aside>

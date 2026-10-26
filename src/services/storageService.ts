@@ -15,7 +15,22 @@ export interface InboxItem {
  * Code technique invisible associé aux 4 dossiers structurels standard.
  */
 export type StandardFolderType = "docs" | "assets" | "sessions" | "archive";
+export type SearchCategoryFilter = "all" | StandardFolderType;
 export type FolderType = StandardFolderType | "custom" | null;
+
+/**
+ * Miroir TypeScript strict de la struct Rust `GlobalSearchResult`.
+ */
+export interface GlobalSearchResult {
+  nom: string;
+  projet: string;
+  chemin_relatif: string;
+  dossier_parent: string;
+  folder_type: StandardFolderType | null;
+  taille: number;
+  est_dossier: boolean;
+  date_modification: number;
+}
 
 /**
  * Table de correspondance entre codes techniques et libellés standards.
@@ -182,6 +197,22 @@ export async function undoLastAction(): Promise<UndoRedoStatus> {
  */
 export async function redoLastAction(): Promise<UndoRedoStatus> {
   return invoke<UndoRedoStatus>("redo_last_action");
+}
+
+/**
+ * Recherche globale à travers l'ensemble des projets et la Boîte de dépôt,
+ * avec filtre de présélection optionnel par catégorie structurelle ('docs', 'assets', 'sessions', 'archive').
+ */
+export async function searchGlobal(
+  query: string,
+  categoryFilter?: SearchCategoryFilter
+): Promise<GlobalSearchResult[]> {
+  const cleanCat =
+    categoryFilter && categoryFilter !== "all" ? categoryFilter : null;
+  return invoke<GlobalSearchResult[]>("search_global", {
+    query: query.trim(),
+    categoryFilter: cleanCat,
+  });
 }
 
 /**

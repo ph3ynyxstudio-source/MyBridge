@@ -1,5 +1,10 @@
 import React, { useEffect, useRef } from "react";
 import { StandardFolderType } from "../../../../services/storageService";
+import {
+  formatFolderDisplayName,
+  getUiTerms,
+  LanguageMode,
+} from "../../../../theme/UI_TERMS";
 import "./ProjectTabPopover.css";
 
 export interface StructuralFolderDef {
@@ -19,6 +24,7 @@ export const STANDARD_SUBFOLDERS = STRUCTURAL_FOLDERS.map((f) => f.label);
 export interface ProjectTabPopoverProps {
   project: string;
   x: number;
+  language?: LanguageMode;
   activeSubpath?: string;
   activeFolderType?: StandardFolderType | null;
   onNavigateSubfolder: (
@@ -79,6 +85,7 @@ function getFolderIcon(folderName: string) {
 export const ProjectTabPopover: React.FC<ProjectTabPopoverProps> = ({
   project,
   x,
+  language = "fr",
   activeSubpath,
   activeFolderType,
   onNavigateSubfolder,
@@ -88,6 +95,7 @@ export const ProjectTabPopover: React.FC<ProjectTabPopoverProps> = ({
   onClose,
 }) => {
   const popoverRef = useRef<HTMLDivElement>(null);
+  const terms = getUiTerms(language);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -137,6 +145,11 @@ export const ProjectTabPopover: React.FC<ProjectTabPopoverProps> = ({
             activeFolderType === folder.code ||
             activeSubpath === folder.label ||
             activeSubpath === folder.code;
+          const displayLabel = formatFolderDisplayName(
+            folder.label,
+            folder.code,
+            language
+          );
           return (
             <button
               key={folder.code}
@@ -150,7 +163,7 @@ export const ProjectTabPopover: React.FC<ProjectTabPopoverProps> = ({
               data-folder-type={folder.code}
             >
               {getFolderIcon(folder.label)}
-              <span className="project-tab-popover__folder-name">{folder.label}</span>
+              <span className="project-tab-popover__folder-name">{displayLabel}</span>
             </button>
           );
         })}
@@ -174,7 +187,7 @@ export const ProjectTabPopover: React.FC<ProjectTabPopoverProps> = ({
               <line x1="12" y1="3" x2="12" y2="21" />
               <polyline points="15 9 18 12 15 15" />
             </svg>
-            <span>Ouvrir dans panneau secondaire</span>
+            <span>{terms.popover.openInSecondary}</span>
           </button>
         )}
 
@@ -191,7 +204,7 @@ export const ProjectTabPopover: React.FC<ProjectTabPopoverProps> = ({
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
             </svg>
-            <span>Renommer le projet</span>
+            <span>{terms.popover.renameProject}</span>
           </button>
         )}
 
@@ -208,7 +221,7 @@ export const ProjectTabPopover: React.FC<ProjectTabPopoverProps> = ({
               <polyline points="3 6 5 6 21 6" />
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
             </svg>
-            <span>Supprimer le projet</span>
+            <span>{terms.popover.deleteProject}</span>
           </button>
         )}
       </div>

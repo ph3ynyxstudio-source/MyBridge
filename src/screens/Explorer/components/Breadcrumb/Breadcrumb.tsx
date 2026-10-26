@@ -1,9 +1,14 @@
 import React, { useMemo } from "react";
+import {
+  formatFolderDisplayName,
+  LanguageMode,
+} from "../../../../theme/UI_TERMS";
 import "./Breadcrumb.css";
 
 export interface BreadcrumbProps {
   projectName: string;
   subpath?: string;
+  language?: LanguageMode;
   onNavigate: (targetSubpath?: string) => void;
   onDropOnSegment?: (e: React.DragEvent, targetSubpath?: string) => void;
 }
@@ -17,6 +22,7 @@ interface BreadcrumbSegment {
 export const Breadcrumb: React.FC<BreadcrumbProps> = ({
   projectName,
   subpath,
+  language = "fr",
   onNavigate,
   onDropOnSegment,
 }) => {
@@ -35,19 +41,19 @@ export const Breadcrumb: React.FC<BreadcrumbProps> = ({
       isCurrent: parts.length === 0,
     });
 
-    // Sous-dossiers successifs
+    // Sous-dossiers successifs (affichés avec libellés lisibles Documents, Images, Sessions, Archives)
     let accum = "";
     parts.forEach((part, idx) => {
       accum = accum ? `${accum}/${part}` : part;
       list.push({
-        label: part,
+        label: formatFolderDisplayName(part, undefined, language),
         subpath: accum,
         isCurrent: idx === parts.length - 1,
       });
     });
 
     return list;
-  }, [projectName, subpath]);
+  }, [projectName, subpath, language]);
 
   if (!projectName || segments.length === 0) {
     return null;

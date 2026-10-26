@@ -4,6 +4,11 @@ import {
   getInboxItems,
   convertInboxFolderToProject,
 } from "../../../../services/storageService";
+import {
+  formatFolderDisplayName,
+  getUiTerms,
+  LanguageMode,
+} from "../../../../theme/UI_TERMS";
 import "./InboxDrawer.css";
 
 export type InboxSortOption = "date-desc" | "date-asc" | "name-asc" | "name-desc";
@@ -15,6 +20,7 @@ export interface InboxDrawerProps {
   defaultTargetProject?: string;
   availableSubfolders: Record<string, string[]>;
   searchQuery?: string;
+  language?: LanguageMode;
   onRefreshInbox: () => void;
   onSelectProject?: (projectName: string) => void;
   onMoveItem: (
@@ -92,12 +98,14 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
   projects,
   availableSubfolders,
   searchQuery = "",
+  language = "fr",
   onRefreshInbox,
   onSelectProject,
   onMoveItem,
   onCreateProject,
   onConvertFolderToProject,
 }) => {
+  const terms = getUiTerms(language);
   // Sélection multiple des éléments de l'inbox
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [dragOverProject, setDragOverProject] = useState<string | null>(null);
@@ -602,10 +610,16 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
 
           <div className="inbox-workspace__item-details">
             <span className="inbox-workspace__item-name" title={item.nom}>
-              {item.nom}
+              {isFolder
+                ? formatFolderDisplayName(item.nom, undefined, language)
+                : item.nom}
             </span>
             <div className="inbox-workspace__item-meta">
-              <span>{formatByteSize(item.taille, item.est_dossier)}</span>
+              <span>
+                {item.est_dossier
+                  ? terms.inboxDrawer.folderBadge
+                  : formatByteSize(item.taille, false)}
+              </span>
               {item.date_modification > 0 && (
                 <>
                   <span>•</span>
@@ -680,13 +694,13 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                   <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
               </span>
-              <h2 className="inbox-workspace__title">Boîte de dépôt</h2>
+              <h2 className="inbox-workspace__title">{terms.inboxDrawer.title}</h2>
               {items.length > 0 && (
                 <span className="inbox-workspace__count">{items.length}</span>
               )}
             </div>
             <p className="inbox-workspace__subtitle">
-              Glissez les éléments en attente sur un projet cible
+              {terms.inboxDrawer.subtitle}
             </p>
           </div>
 
@@ -695,7 +709,7 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
               type="button"
               className="inbox-workspace__btn inbox-workspace__btn--ghost"
               onClick={onRefreshInbox}
-              title="Actualiser la liste"
+              title={terms.inboxDrawer.refresh}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 12a9 9 0 0 0-15.5-6.3L3 8" />
@@ -716,42 +730,42 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                   className={`inbox-workspace__filter-pill ${filterType === "all" ? "inbox-workspace__filter-pill--active" : ""}`}
                   onClick={() => setFilterType("all")}
                 >
-                  Tous ({items.length})
+                  {terms.inboxDrawer.filterAll} ({items.length})
                 </button>
                 <button
                   type="button"
                   className={`inbox-workspace__filter-pill ${filterType === "images" ? "inbox-workspace__filter-pill--active" : ""}`}
                   onClick={() => setFilterType("images")}
                 >
-                  Images
+                  {terms.inboxDrawer.filterImages}
                 </button>
                 <button
                   type="button"
                   className={`inbox-workspace__filter-pill ${filterType === "texts" ? "inbox-workspace__filter-pill--active" : ""}`}
                   onClick={() => setFilterType("texts")}
                 >
-                  Markdown / Textes
+                  {terms.inboxDrawer.filterTexts}
                 </button>
                 <button
                   type="button"
                   className={`inbox-workspace__filter-pill ${filterType === "folders" ? "inbox-workspace__filter-pill--active" : ""}`}
                   onClick={() => setFilterType("folders")}
                 >
-                  Dossiers
+                  {terms.inboxDrawer.filterFolders}
                 </button>
               </div>
 
               <div className="inbox-workspace__sort-row">
-                <span className="inbox-workspace__sort-label">Trier :</span>
+                <span className="inbox-workspace__sort-label">{terms.inboxDrawer.sortLabel}</span>
                 <select
                   className="inbox-workspace__sort-select"
                   value={sortOption}
                   onChange={(e) => setSortOption(e.target.value as InboxSortOption)}
                 >
-                  <option value="date-desc">Date (récents)</option>
-                  <option value="date-asc">Date (anciens)</option>
-                  <option value="name-asc">Nom (A - Z)</option>
-                  <option value="name-desc">Nom (Z - A)</option>
+                  <option value="date-desc">{terms.inboxDrawer.sortDateDesc}</option>
+                  <option value="date-asc">{terms.inboxDrawer.sortDateAsc}</option>
+                  <option value="name-asc">{terms.inboxDrawer.sortNameAsc}</option>
+                  <option value="name-desc">{terms.inboxDrawer.sortNameDesc}</option>
                 </select>
               </div>
             </div>
@@ -766,11 +780,11 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                   checked={isAllSelected}
                   onChange={toggleSelectAll}
                 />
-                <span>Tout sélectionner ({processedItems.length})</span>
+                <span>{terms.inboxDrawer.selectAll} ({processedItems.length})</span>
               </label>
               {selectedItems.size > 0 && (
                 <div className="inbox-workspace__selection-pill">
-                  {selectedItems.size} sélectionné(s)
+                  {terms.inboxDrawer.selectedPill(selectedItems.size)}
                 </div>
               )}
             </div>
@@ -795,13 +809,13 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                   <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
                   <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
                 </svg>
-                <h4>Boîte de dépôt vide</h4>
-                <p>Déposez des fichiers dans le dossier 00-Dropbox de votre machine pour les classer ici.</p>
+                <h4>{terms.inboxDrawer.emptyTitle}</h4>
+                <p>{terms.inboxDrawer.empty}</p>
               </div>
             ) : processedItems.length === 0 ? (
               <div className="inbox-workspace__empty">
-                <h4>Aucun élément correspondant</h4>
-                <p>Aucun fichier ne correspond au filtre sélectionné.</p>
+                <h4>{terms.inboxDrawer.noMatchTitle}</h4>
+                <p>{terms.inboxDrawer.noMatchSubtitle}</p>
               </div>
             ) : (
               <ul className="inbox-workspace__list">
@@ -811,19 +825,19 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
           </div>
         </aside>
 
-        {/* PANNEAU DROIT : ZONE DE DÉPÔT SUR LES PROJETS (CARRÉS ROUGES) */}
+        {/* PANNEAU DROIT : ZONE DE DÉPÔT SUR LES PROJETS */}
         <section className="inbox-workspace__canvas">
           <header className="inbox-workspace__canvas-header">
             <div>
-              <h3 className="inbox-workspace__canvas-title">Projets de destination</h3>
+              <h3 className="inbox-workspace__canvas-title">{terms.inboxDrawer.destTitle}</h3>
               <p className="inbox-workspace__canvas-subtitle">
-                Glissez-déposez vos fichiers sélectionnés directement sur la carte du projet souhaité
+                {terms.inboxDrawer.destSubtitle}
               </p>
             </div>
 
             {isMoving ? (
               <div className="inbox-workspace__drag-notice inbox-workspace__drag-notice--moving">
-                <span>Déplacement en cours...</span>
+                <span>{terms.inboxDrawer.movingNotice}</span>
               </div>
             ) : selectedItems.size > 0 ? (
               <div className="inbox-workspace__drag-notice">
@@ -831,7 +845,7 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <polyline points="14 2 14 8 20 8" />
                 </svg>
-                <span><strong>{selectedItems.size}</strong> élément(s) prêt(s) à être glissé(s)</span>
+                <span>{terms.inboxDrawer.readyToDrag(selectedItems.size)}</span>
               </div>
             ) : null}
           </header>
@@ -863,7 +877,7 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                     setDragOverProject(null);
                   }}
                   onDrop={(e) => void handleDropOnProject(e, proj)}
-                  title={`Glissez des éléments ici pour les transférer dans « ${proj} » ou cliquez pour ouvrir le projet`}
+                  title={proj}
                 >
                   <div className="inbox-drop-card__icon-wrapper">
                     <svg viewBox="0 0 24 24" fill="currentColor" className="inbox-drop-card__folder-svg">
@@ -876,9 +890,7 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                       {proj}
                     </h4>
                     <span className="inbox-drop-card__sub-count">
-                      {subfolders.length > 0
-                        ? `${subfolders.length} sous-dossier(s)`
-                        : "Racine du projet"}
+                      {terms.inboxDrawer.subfoldersCount(subfolders.length)}
                     </span>
                   </div>
 
@@ -887,13 +899,17 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                       <path d="M12 5v14" />
                       <path d="M19 12l-7 7-7-7" />
                     </svg>
-                    <span>{isOver ? `Déposer dans « ${proj} »` : "Déposer les fichiers ici"}</span>
+                    <span>
+                      {isOver
+                        ? terms.inboxDrawer.dropInto(proj)
+                        : terms.inboxDrawer.dropHere}
+                    </span>
                   </div>
                 </div>
               );
             })}
 
-            {/* CARTE : CRÉER UN NOUVEAU PROJET (supporte le clic ET le dépôt d'un dossier à convertir) */}
+            {/* CARTE : CRÉER UN NOUVEAU PROJET */}
             <div
               className={`inbox-drop-card inbox-drop-card--create ${
                 isCreatingProject ? "inbox-drop-card--creating" : ""
@@ -917,11 +933,11 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                   className="inbox-drop-card__form"
                   onSubmit={(e) => void handleCreateProjectSubmit(e)}
                 >
-                  <h4 className="inbox-drop-card__form-title">Nouveau projet</h4>
+                  <h4 className="inbox-drop-card__form-title">{terms.inboxDrawer.createCardTitle}</h4>
                   <input
                     type="text"
                     className="inbox-drop-card__input"
-                    placeholder="Nom du projet..."
+                    placeholder={terms.newProjectInput.placeholder}
                     value={newProjectInput}
                     onChange={(e) => setNewProjectInput(e.target.value)}
                     autoFocus
@@ -939,13 +955,13 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                         setCreateError(null);
                       }}
                     >
-                      Annuler
+                      ✕
                     </button>
                     <button
                       type="submit"
                       className="inbox-workspace__btn inbox-workspace__btn--primary"
                     >
-                      Créer
+                      {terms.newProjectInput.buttonCreate}
                     </button>
                   </div>
                 </form>
@@ -954,7 +970,7 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                   type="button"
                   className="inbox-drop-card__create-btn"
                   onClick={() => setIsCreatingProject(true)}
-                  title="Créer un nouveau projet ou glisser un dossier ici pour le convertir"
+                  title={terms.inboxDrawer.createCardHint}
                 >
                   <div className="inbox-drop-card__create-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -962,11 +978,11 @@ export const InboxDrawer: React.FC<InboxDrawerProps> = ({
                       <line x1="5" y1="12" x2="19" y2="12" />
                     </svg>
                   </div>
-                  <span className="inbox-drop-card__create-label">Créer un nouveau projet</span>
+                  <span className="inbox-drop-card__create-label">{terms.inboxDrawer.createCardTitle}</span>
                   <span className="inbox-drop-card__create-hint">
                     {isDragOverCreate
-                      ? "Relâchez le dossier pour le convertir en projet"
-                      : "Cliquez ou déposez un dossier ici pour le convertir"}
+                      ? terms.inboxDrawer.createCardDropHint
+                      : terms.inboxDrawer.createCardHint}
                   </span>
                 </button>
               )}
